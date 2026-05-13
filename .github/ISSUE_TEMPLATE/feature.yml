@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest a capability or change
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What pain are you running into? Skip the proposed solution for now.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Sketch of how this could work. Drop CLI examples or YAML mockups if you have them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing workarounds, related tools, or other framings you've thought about.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: In-scope check
+      description: This project is intentionally narrow (see PRODUCT.md §16). Confirm this isn't on the out-of-scope list.
+      options:
+        - label: I've checked PRODUCT.md and this isn't on the out-of-scope list
+          required: true

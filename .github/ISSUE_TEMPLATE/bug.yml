@@ -1,0 +1,50 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: ["bug", "triage"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Brief description of the bug.
+      placeholder: "Running `skil-lock scan` on ... produces ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal steps to reproduce. Include a sample SKILL.md or skills.lock if relevant.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: skil-lock version
+      placeholder: "v0.1.0 (or commit SHA)"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / arch
+      placeholder: "linux/amd64, macOS 14 arm64, ..."
+    validations:
+      required: true
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version (if built from source)
+      placeholder: "go1.22.0"
