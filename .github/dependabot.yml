@@ -1,6 +1,5 @@
 version: 2
 updates:
-  # GitHub Actions bumps only (no gomod yet; reintroduce when go.mod lands).
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -12,3 +11,23 @@ updates:
     commit-message:
       prefix: "deps(actions)"
       include: "scope"
+
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "deps(go)"
+      include: "scope"
+    groups:
+      go-deps:
+        applies-to: "version-updates"
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
