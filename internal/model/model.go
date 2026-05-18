@@ -71,10 +71,13 @@ type Lockfile struct {
 const SchemaVersionV01 = "0.1"
 
 // NewLockfile returns an empty lockfile with metadata initialised.
+// The timestamp is normalised to UTC and truncated to the second so
+// re-runs on the same wall clock produce the same file — sub-second
+// noise in skills.lock would defeat the PR-diff review workflow.
 func NewLockfile(generatedBy string, generatedAt time.Time) Lockfile {
 	return Lockfile{
 		SchemaVersion: SchemaVersionV01,
-		GeneratedAt:   generatedAt.UTC(),
+		GeneratedAt:   generatedAt.UTC().Truncate(time.Second),
 		GeneratedBy:   generatedBy,
 		Skills:        map[string]LockEntry{},
 	}
