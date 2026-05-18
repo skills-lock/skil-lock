@@ -89,6 +89,33 @@ func TestDiff_HasBlocking(t *testing.T) {
 	}
 }
 
+func TestNewLockEntry_DropsNameAndPreservesRest(t *testing.T) {
+	id := Identity{
+		Name:       "code-review",
+		Version:    "1.4.0",
+		SourcePath: ".claude/skills/code-review/SKILL.md",
+		Runtime:    RuntimeClaude,
+	}
+	b := Behavior{ShellCommands: []string{"git"}}
+	e := NewLockEntry(id, "sha256:abc", b)
+
+	if e.Runtime != RuntimeClaude {
+		t.Errorf("Runtime: want %q, got %q", RuntimeClaude, e.Runtime)
+	}
+	if e.SourcePath != id.SourcePath {
+		t.Errorf("SourcePath: want %q, got %q", id.SourcePath, e.SourcePath)
+	}
+	if e.Version != "1.4.0" {
+		t.Errorf("Version: want %q, got %q", "1.4.0", e.Version)
+	}
+	if e.ContentHash != "sha256:abc" {
+		t.Errorf("ContentHash: want %q, got %q", "sha256:abc", e.ContentHash)
+	}
+	if len(e.Behavior.ShellCommands) != 1 || e.Behavior.ShellCommands[0] != "git" {
+		t.Errorf("Behavior not preserved: %+v", e.Behavior)
+	}
+}
+
 func TestRuntime_Constants(t *testing.T) {
 	if RuntimeClaude == RuntimeCodex {
 		t.Fatal("runtime constants must be distinct")

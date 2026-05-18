@@ -25,21 +25,38 @@ type Identity struct {
 
 // Behavior is the approved capability surface of a skill. Each slice is a
 // sorted set of distinct values; detectors are responsible for normalisation
-// before populating these fields.
+// before populating these fields. All six categories are always emitted in
+// skills.lock (empty as `[]`) so reviewers see the full surface explicitly.
 type Behavior struct {
-	ShellCommands  []string `yaml:"shell_commands,omitempty"`
-	NetworkURLs    []string `yaml:"network_urls,omitempty"`
-	FileReads      []string `yaml:"file_reads,omitempty"`
-	FileWrites     []string `yaml:"file_writes,omitempty"`
-	AllowedTools   []string `yaml:"allowed_tools,omitempty"`
-	BundledScripts []string `yaml:"bundled_scripts,omitempty"`
+	ShellCommands  []string `yaml:"shell_commands"`
+	NetworkURLs    []string `yaml:"network_urls"`
+	FileReads      []string `yaml:"file_reads"`
+	FileWrites     []string `yaml:"file_writes"`
+	AllowedTools   []string `yaml:"allowed_tools"`
+	BundledScripts []string `yaml:"bundled_scripts"`
 }
 
-// LockEntry is one skill's row in skills.lock.
+// LockEntry is one skill's row in skills.lock. Fields are declared in the
+// canonical on-disk order (runtime → source_path → version → content_hash →
+// behavior); Name is not a field because the surrounding map key carries it.
 type LockEntry struct {
-	Identity    `yaml:",inline"`
+	Runtime     Runtime  `yaml:"runtime"`
+	SourcePath  string   `yaml:"source_path"`
+	Version     string   `yaml:"version"`
 	ContentHash string   `yaml:"content_hash"`
 	Behavior    Behavior `yaml:"behavior"`
+}
+
+// NewLockEntry builds an entry from an Identity (parser output) + the
+// content hash + behavior. Drops Identity.Name — it becomes the map key.
+func NewLockEntry(id Identity, contentHash string, b Behavior) LockEntry {
+	return LockEntry{
+		Runtime:     id.Runtime,
+		SourcePath:  id.SourcePath,
+		Version:     id.Version,
+		ContentHash: contentHash,
+		Behavior:    b,
+	}
 }
 
 // Lockfile is the on-disk skills.lock document.

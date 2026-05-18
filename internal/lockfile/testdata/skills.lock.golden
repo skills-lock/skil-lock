@@ -1,0 +1,68 @@
+# skills.lock — generated and maintained by skil-lock. Do not hand-edit.
+# Commit this file. PR reviewers will see capability deltas inline.
+
+schema_version: "0.1"
+generated_at: 2026-05-16T09:14:08Z
+generated_by: skil-lock 0.1.0
+skills:
+  code-review:
+    runtime: claude
+    source_path: .claude/skills/code-review/SKILL.md
+    version: 1.4.0
+    content_hash: sha256:7a3e9b1c4d2f8a6e0b5c1d9e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a
+    behavior:
+      shell_commands:
+        - git
+      network_urls: []
+      file_reads:
+        - '**/*.go'
+        - '**/*.py'
+        - '**/*.ts'
+      file_writes: []
+      allowed_tools:
+        - Bash
+        - Read
+        - Grep
+      bundled_scripts:
+        - scripts/review.sh
+  pdf-extractor:
+    runtime: claude
+    source_path: .claude/skills/pdf-extractor/SKILL.md
+    version: 1.2.0
+    content_hash: sha256:a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
+    behavior:
+      shell_commands:
+        - pdftotext
+      network_urls: []
+      file_reads:
+        - ./input/*.pdf
+      file_writes:
+        - ./output/*.txt
+      allowed_tools:
+        - Bash
+        - Read
+        - Write
+      bundled_scripts:
+        - scripts/extract.sh
+  release-notes:
+    runtime: codex
+    source_path: .codex/skills/release-notes/SKILL.md
+    version: 0.3.1
+    content_hash: sha256:c0ffee0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+    behavior:
+      shell_commands:
+        - git
+        - gh
+      network_urls:
+        - https://api.github.com/repos/*/releases
+        - https://api.github.com/repos/*/compare/*
+      file_reads:
+        - CHANGELOG.md
+      file_writes:
+        - release-notes-*.md
+      allowed_tools:
+        - Bash
+        - Read
+        - Write
+      bundled_scripts:
+        - scripts/render-notes.sh
