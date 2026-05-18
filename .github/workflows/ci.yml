@@ -45,6 +45,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Test
+        shell: bash
         run: go test -race -coverprofile=coverage.out ./...
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
