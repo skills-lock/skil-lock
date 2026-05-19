@@ -394,8 +394,8 @@ func TestDeltaKey(t *testing.T) {
 		{"version", "modified_version", model.ChangeModified},
 	}
 	for _, c := range cases {
-		if got := deltaKey(c.cap, c.change); got != c.want {
-			t.Errorf("deltaKey(%q,%v) = %q, want %q", c.cap, c.change, got, c.want)
+		if got := DeltaKey(c.cap, c.change); got != c.want {
+			t.Errorf("DeltaKey(%q,%v) = %q, want %q", c.cap, c.change, got, c.want)
 		}
 	}
 }

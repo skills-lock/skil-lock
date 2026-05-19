@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/skills-lock/skil-lock/internal/approvals"
 	"github.com/skills-lock/skil-lock/internal/diff"
 	"github.com/skills-lock/skil-lock/internal/lockfile"
 	"github.com/skills-lock/skil-lock/internal/model"
@@ -14,7 +16,10 @@ import (
 	"github.com/skills-lock/skil-lock/internal/scan"
 )
 
-const defaultPolicyName = ".skil-lock.yaml"
+const (
+	defaultPolicyName    = ".skil-lock.yaml"
+	defaultApprovalsName = ".skil-lock-approvals.yaml"
+)
 
 // errBlocking is returned to main when policy is in block mode and the
 // diff contains blocking-severity entries. main exits 1 on any error,
@@ -29,15 +34,16 @@ var errBlocking = errors.New("policy block: capability deltas require approval")
 const blockingThreshold = model.SeverityMedium
 
 func newCICmd() *cobra.Command {
-	var policyPath, lockPath string
+	var policyPath, lockPath, approvalsPath string
 	cmd := &cobra.Command{
 		Use:   "ci [path]",
 		Short: "Verify [path] against its committed skills.lock and .skil-lock.yaml.",
 		Long: `ci re-scans [path] (default .), loads .skil-lock.yaml (or falls
 back to warn-mode defaults if absent), loads skills.lock, computes the
-capability delta, and lifts severities per policy. Exit code is 1 when
-policy is mode=block and any delta is at severity >= medium; exit code
-is 0 otherwise (warn mode never blocks the build).
+capability delta, drops deltas pre-approved in .skil-lock-approvals.yaml,
+and lifts severities per policy. Exit code is 1 when policy is mode=block
+and any remaining delta is at severity >= medium; exit code is 0 otherwise
+(warn mode never blocks the build).
 
 This is the command the SkilLock GitHub Action invokes; the same command
 works locally — run it before opening a PR to see what reviewers will
@@ -50,6 +56,11 @@ see.`,
 			}
 
 			pol, err := loadPolicy(cmd, root, policyPath)
+			if err != nil {
+				return err
+			}
+
+			as, err := loadApprovals(cmd, root, approvalsPath)
 			if err != nil {
 				return err
 			}
@@ -73,6 +84,19 @@ see.`,
 
 			current := buildLockfile(rep)
 			d := diff.Compare(baseline, current, lp, "<working tree>")
+
+			d, applied, expired := approvals.Filter(d, as, time.Now())
+			for _, a := range applied {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"approved: skill=%s reviewer=%s reason=%q\n",
+					a.Skill, a.Reviewer, a.Reason)
+			}
+			for _, a := range expired {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"approval expired: skill=%s reviewer=%s expires_at=%s — delta resurfaced\n",
+					a.Skill, a.Reviewer, a.ExpiresAt.UTC().Format(time.RFC3339))
+			}
+
 			policy.Apply(&d, pol)
 
 			verdict, blocked := decide(d, pol)
@@ -87,6 +111,7 @@ see.`,
 	}
 	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .skil-lock.yaml (default: <path>/.skil-lock.yaml)")
 	cmd.Flags().StringVar(&lockPath, "lockfile", "", "Path to skills.lock (default: <path>/skills.lock)")
+	cmd.Flags().StringVar(&approvalsPath, "approvals", "", "Path to .skil-lock-approvals.yaml (default: <path>/.skil-lock-approvals.yaml)")
 	return cmd
 }
 
@@ -109,6 +134,27 @@ func loadPolicy(cmd *cobra.Command, root, override string) (model.Policy, error)
 		return model.Policy{}, fmt.Errorf("load policy: %w", err)
 	}
 	return pol, nil
+}
+
+// loadApprovals resolves the approvals file path and loads it. A missing
+// approvals file is not an error — most repos start without any approved
+// deltas, and adding the file is itself a workflow step we don't want
+// to gate the first run on. Unlike loadPolicy, no stderr notice is
+// emitted on absence: the empty case is the common one, and a notice
+// per run would be noise.
+func loadApprovals(cmd *cobra.Command, root, override string) ([]approvals.Approval, error) {
+	ap := override
+	if ap == "" {
+		ap = filepath.Join(root, defaultApprovalsName)
+	}
+	as, err := approvals.Load(ap)
+	switch {
+	case errors.Is(err, approvals.ErrMissingApprovals):
+		return nil, nil
+	case err != nil:
+		return nil, fmt.Errorf("load approvals: %w", err)
+	}
+	return as, nil
 }
 
 // decide returns the human-facing verdict line and whether the build

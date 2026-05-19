@@ -355,6 +355,89 @@ func TestE2E_CIProtectedPathsLiftsAndBlocks(t *testing.T) {
 	}
 }
 
+func TestE2E_CIApprovedDeltaUnblocks(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)
+	if _, _, err := runCmd(t, "lock", root); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	writeFile(t, root, ".skil-lock.yaml", "mode: block\n")
+	writeFile(t, root, ".claude/skills/benign/SKILL.md",
+		benignSkill+"\n```bash\ncurl https://newdep.example\n```\n")
+
+	// Confirm the drift would block without the approval.
+	_, _, err := runCmd(t, "ci", root)
+	if err == nil {
+		t.Fatalf("baseline: block mode should fail before approval is in place")
+	}
+
+	// Approve the same (skill, delta-key, value) triplet that T2.2's
+	// snippet would have emitted.
+	writeFile(t, root, ".skil-lock-approvals.yaml", `schema_version: "0.1"
+approvals:
+  - skill: "benign"
+    delta:
+      added_shell_command: "curl"
+    reviewer: "tester@example.com"
+    reviewed_at: "2026-05-19T14:00:00Z"
+    reason: "Approved for the test."
+  - skill: "benign"
+    delta:
+      added_network_url: "https://newdep.example"
+    reviewer: "tester@example.com"
+    reviewed_at: "2026-05-19T14:00:00Z"
+    reason: "Approved for the test."
+`)
+
+	stdout, stderr, err := runCmd(t, "ci", root)
+	if err != nil {
+		t.Fatalf("approved drift should pass; stderr=%s", stderr)
+	}
+	if !strings.Contains(stderr, "approved: skill=benign") {
+		t.Errorf("expected per-approval stderr notice:\n%s", stderr)
+	}
+	// The PR comment shouldn't even mention the approved delta — that's
+	// what makes the workflow quiet on the happy path.
+	if strings.Contains(stdout, "`curl`") {
+		t.Errorf("approved curl should not appear in PR comment:\n%s", stdout)
+	}
+}
+
+func TestE2E_CIExpiredApprovalKeepsBlocking(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)
+	if _, _, err := runCmd(t, "lock", root); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	writeFile(t, root, ".skil-lock.yaml", "mode: block\n")
+	writeFile(t, root, ".claude/skills/benign/SKILL.md",
+		benignSkill+"\n```bash\ncurl https://newdep.example\n```\n")
+
+	writeFile(t, root, ".skil-lock-approvals.yaml", `schema_version: "0.1"
+approvals:
+  - skill: "benign"
+    delta:
+      added_shell_command: "curl"
+    reviewer: "tester@example.com"
+    reviewed_at: "2025-12-01T00:00:00Z"
+    reason: "Used to be approved."
+    expires_at: "2026-01-01T00:00:00Z"
+`)
+
+	stdout, stderr, err := runCmd(t, "ci", root)
+	if err == nil {
+		t.Fatalf("expired approval should NOT unblock:\nstdout=%s\nstderr=%s", stdout, stderr)
+	}
+	if !strings.Contains(stderr, "approval expired") {
+		t.Errorf("expected expired-approval stderr notice:\n%s", stderr)
+	}
+	// The curl delta should resurface in the PR comment with the expiry
+	// annotation in the Reason column.
+	if !strings.Contains(stdout, "approval expired 2026-01-01") {
+		t.Errorf("expected expired annotation in PR comment:\n%s", stdout)
+	}
+}
+
 func TestE2E_CIMissingLockfileIsError(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)

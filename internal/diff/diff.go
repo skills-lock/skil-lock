@@ -353,7 +353,7 @@ func renderApprovalsSnippet(d model.Diff) string {
 	for _, e := range blocking {
 		fmt.Fprintf(&b, "  - skill: %s\n", yamlString(e.Skill))
 		fmt.Fprint(&b, "    delta:\n")
-		fmt.Fprintf(&b, "      %s: %s\n", deltaKey(e.Capability, e.Change), yamlString(e.Value))
+		fmt.Fprintf(&b, "      %s: %s\n", DeltaKey(e.Capability, e.Change), yamlString(e.Value))
 		fmt.Fprint(&b, "    reviewer: \"you@example.com\"\n")
 		fmt.Fprintf(&b, "    reviewed_at: %s\n", yamlString(stamp))
 		fmt.Fprint(&b, "    reason: \"<why this delta is acceptable>\"\n")
@@ -362,10 +362,15 @@ func renderApprovalsSnippet(d model.Diff) string {
 	return b.String()
 }
 
-// deltaKey turns ("shell_commands", added) into "added_shell_command",
+// DeltaKey turns ("shell_commands", added) into "added_shell_command",
 // matching PRODUCT.md §8's example schema. v0.1 capability keys are all
 // regular plurals so a single trailing-`s` strip is enough.
-func deltaKey(capability string, change model.ChangeType) string {
+//
+// Exported because internal/approvals reads .skil-lock-approvals.yaml
+// and must match incoming delta keys against entries in a model.Diff;
+// the renderer and the consumer have to agree on the key shape, and
+// keeping the function in one place is how we keep them in sync.
+func DeltaKey(capability string, change model.ChangeType) string {
 	verb := "added"
 	switch change {
 	case model.ChangeRemoved:
