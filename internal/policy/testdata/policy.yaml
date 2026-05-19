@@ -1,0 +1,11 @@
+mode: block
+protected_paths:
+  - ".env"
+  - "secrets/**"
+  - "**/*.pem"
+require_approval:
+  - shell_commands
+  - network_urls
+allowed_domains:
+  - "api.openai.com"
+  - "*.github.com"
