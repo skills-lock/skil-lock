@@ -257,6 +257,103 @@ func TestE2E_DiffJSONShape(t *testing.T) {
 	}
 }
 
+func TestE2E_CICleanPassesWithoutPolicyFile(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)
+
+	if _, _, err := runCmd(t, "lock", root); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+
+	stdout, stderr, err := runCmd(t, "ci", root)
+	if err != nil {
+		t.Fatalf("ci should pass on clean repo, got err=%v\nstderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "no capability deltas") {
+		t.Errorf("expected clean verdict in stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "no .skil-lock.yaml") || !strings.Contains(stderr, "mode=warn") {
+		t.Errorf("expected missing-policy notice in stderr:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "PASS") {
+		t.Errorf("expected PASS verdict in stderr:\n%s", stderr)
+	}
+}
+
+func TestE2E_CIWarnModeAllowsDriftButReports(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)
+	if _, _, err := runCmd(t, "lock", root); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	writeFile(t, root, ".skil-lock.yaml", "mode: warn\n")
+
+	// Introduce drift: skill gains a new shell command.
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill+"\n```bash\ncurl https://newdep.example\n```\n")
+
+	stdout, stderr, err := runCmd(t, "ci", root)
+	if err != nil {
+		t.Fatalf("warn mode should not return error, got %v", err)
+	}
+	if !strings.Contains(stderr, "WARN") {
+		t.Errorf("warn verdict missing:\n%s", stderr)
+	}
+	if !strings.Contains(stdout, "curl") {
+		t.Errorf("ci stdout should include the diff:\n%s", stdout)
+	}
+}
+
+func TestE2E_CIBlockModeFailsOnDrift(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)
+	if _, _, err := runCmd(t, "lock", root); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	writeFile(t, root, ".skil-lock.yaml", "mode: block\n")
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill+"\n```bash\ncurl https://newdep.example\n```\n")
+
+	_, stderr, err := runCmd(t, "ci", root)
+	if err == nil {
+		t.Fatalf("block mode should fail the build; stderr=%s", stderr)
+	}
+	if !strings.Contains(stderr, "BLOCK") {
+		t.Errorf("block verdict missing:\n%s", stderr)
+	}
+}
+
+func TestE2E_CIProtectedPathsLiftsAndBlocks(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)
+	if _, _, err := runCmd(t, "lock", root); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	// Policy: block, protect anything under secrets/. Mutation: skill
+	// gains a read of secrets/db.yaml.
+	writeFile(t, root, ".skil-lock.yaml", "mode: block\nprotected_paths:\n  - secrets/**\n")
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill+"\n```bash\ncat secrets/db.yaml\n```\n")
+
+	stdout, stderr, err := runCmd(t, "ci", root)
+	if err == nil {
+		t.Fatalf("protected_paths intersection should block; stderr=%s", stderr)
+	}
+	if !strings.Contains(stdout, "secrets/db.yaml") {
+		t.Errorf("diff stdout should mention the protected path:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "protected_paths") {
+		t.Errorf("diff should annotate why it lifted:\n%s", stdout)
+	}
+}
+
+func TestE2E_CIMissingLockfileIsError(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)
+
+	_, stderr, err := runCmd(t, "ci", root)
+	if err == nil {
+		t.Fatalf("ci without skills.lock should error; stderr=%s", stderr)
+	}
+}
+
 func containsStr(xs []string, want string) bool {
 	for _, x := range xs {
 		if x == want {
