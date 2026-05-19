@@ -312,12 +312,23 @@ func TestE2E_CIBlockModeFailsOnDrift(t *testing.T) {
 	writeFile(t, root, ".skil-lock.yaml", "mode: block\n")
 	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill+"\n```bash\ncurl https://newdep.example\n```\n")
 
-	_, stderr, err := runCmd(t, "ci", root)
+	stdout, stderr, err := runCmd(t, "ci", root)
 	if err == nil {
 		t.Fatalf("block mode should fail the build; stderr=%s", stderr)
 	}
 	if !strings.Contains(stderr, "BLOCK") {
 		t.Errorf("block verdict missing:\n%s", stderr)
+	}
+	// T2.2 wedge: a blocking delta produces a copy-paste snippet that
+	// names the same skill + delta key, so a reviewer can approve inline.
+	if !strings.Contains(stdout, "To approve, append to `.skil-lock-approvals.yaml`") {
+		t.Errorf("approvals snippet missing from PR comment:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "skill: \"benign\"") {
+		t.Errorf("snippet should name the skill from the diff:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `added_shell_command: "curl"`) {
+		t.Errorf("snippet should encode the added shell command:\n%s", stdout)
 	}
 }
 

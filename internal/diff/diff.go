@@ -7,9 +7,20 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/skills-lock/skil-lock/internal/model"
 )
+
+// nowFunc is the clock for time-stamping the approvals-snippet placeholder.
+// Overridable in tests so RenderMarkdown output is deterministic.
+var nowFunc = time.Now
+
+// SnippetThreshold is the severity at or above which RenderMarkdown emits
+// the copy-paste approvals snippet. It matches the cmd-level blocking
+// threshold so the snippet only appears when CI would (or could, if mode
+// flipped to block) actually fail the build.
+const SnippetThreshold = model.SeverityMedium
 
 // Capabilities are the six behavior categories the diff compares. The
 // order is also the rendering order — most security-relevant first so
@@ -244,8 +255,13 @@ func changeOrder(c model.ChangeType) int {
 }
 
 // RenderMarkdown formats a diff for a PR comment. The shape follows
-// MOCKUPS.md / PRODUCT.md §13: short header, capability table grouped
-// by change type, then a verdict line.
+// MOCKUPS.md / PRODUCT.md §13: short header, capability table with a
+// per-row Reason column (sourced from DiffEntry.Note, which policy.Apply
+// populates with rule-fired explanations), then a verdict line, then a
+// copy-paste .skil-lock-approvals.yaml snippet when any added entry is
+// at severity >= SnippetThreshold. The snippet is the wedge versus
+// exit-code-only scanners (Mondoo, SkillFortify): a reviewer can approve
+// a delta inline with one paste.
 //
 // If verdict is empty, no verdict line is rendered — the policy layer
 // is responsible for deciding pass / warn / block. RenderMarkdown is
@@ -258,37 +274,41 @@ func RenderMarkdown(d model.Diff, verdict string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "### SkilLock — capability delta\n\n")
 	fmt.Fprintf(&b, "Comparing `%s` (baseline) vs `%s` (current).\n\n", d.BaselinePath, d.CurrentPath)
-	fmt.Fprintf(&b, "| Skill | Capability | Change | Detail |\n")
-	fmt.Fprintf(&b, "|---|---|---|---|\n")
+	fmt.Fprintf(&b, "| Skill | Capability | Change | Detail | Reason |\n")
+	fmt.Fprintf(&b, "|---|---|---|---|---|\n")
 	for _, e := range d.Entries {
-		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n",
-			e.Skill, e.Capability, changeMarker(e.Change), renderDetail(e))
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n",
+			e.Skill, e.Capability, changeMarker(e.Change), renderDetail(e), renderReason(e))
 	}
 	if verdict != "" {
 		fmt.Fprintf(&b, "\n**Verdict:** %s\n", verdict)
 	}
+	if snippet := renderApprovalsSnippet(d); snippet != "" {
+		fmt.Fprint(&b, snippet)
+	}
 	return b.String()
 }
 
+// renderDetail formats the Value column. The note that previously rode in
+// parens here now lives in its own Reason column.
 func renderDetail(e model.DiffEntry) string {
 	switch e.Change {
-	case model.ChangeAdded:
-		if e.Note != "" {
-			return fmt.Sprintf("`%s` (%s)", e.Value, e.Note)
-		}
-		return fmt.Sprintf("`%s`", e.Value)
-	case model.ChangeRemoved:
-		if e.Note != "" {
-			return fmt.Sprintf("`%s` (%s)", e.Value, e.Note)
-		}
+	case model.ChangeAdded, model.ChangeRemoved:
 		return fmt.Sprintf("`%s`", e.Value)
 	case model.ChangeModified:
-		if e.Note != "" {
-			return fmt.Sprintf("`%s` → `%s` (%s)", e.OldValue, e.Value, e.Note)
-		}
 		return fmt.Sprintf("`%s` → `%s`", e.OldValue, e.Value)
 	}
 	return e.Value
+}
+
+// renderReason surfaces DiffEntry.Note in its own column. An em-dash keeps
+// the table visually balanced when no rule fired (better than an empty
+// cell, which some markdown renderers collapse).
+func renderReason(e model.DiffEntry) string {
+	if e.Note == "" {
+		return "—"
+	}
+	return e.Note
 }
 
 func changeMarker(c model.ChangeType) string {
@@ -301,4 +321,84 @@ func changeMarker(c model.ChangeType) string {
 		return "~"
 	}
 	return "?"
+}
+
+// renderApprovalsSnippet returns a fenced YAML block conforming to
+// PRODUCT.md §8, pre-filled with one approval entry per added delta at
+// severity >= SnippetThreshold. Returns "" if no such deltas exist.
+//
+// Reviewer + reason fields are placeholders the reviewer fills in;
+// reviewed_at is the current wall clock (UTC, second precision) so a
+// paste into the repo is a complete, valid record.
+func renderApprovalsSnippet(d model.Diff) string {
+	threshold := severityRank(SnippetThreshold)
+	var blocking []model.DiffEntry
+	for _, e := range d.Entries {
+		if e.Change != model.ChangeAdded {
+			continue
+		}
+		if severityRank(e.Severity) >= threshold {
+			blocking = append(blocking, e)
+		}
+	}
+	if len(blocking) == 0 {
+		return ""
+	}
+	stamp := nowFunc().UTC().Truncate(time.Second).Format(time.RFC3339)
+	var b strings.Builder
+	fmt.Fprint(&b, "\n**To approve, append to `.skil-lock-approvals.yaml`:**\n\n")
+	fmt.Fprint(&b, "```yaml\n")
+	fmt.Fprint(&b, "schema_version: \"0.1\"\n")
+	fmt.Fprint(&b, "approvals:\n")
+	for _, e := range blocking {
+		fmt.Fprintf(&b, "  - skill: %s\n", yamlString(e.Skill))
+		fmt.Fprint(&b, "    delta:\n")
+		fmt.Fprintf(&b, "      %s: %s\n", deltaKey(e.Capability, e.Change), yamlString(e.Value))
+		fmt.Fprint(&b, "    reviewer: \"you@example.com\"\n")
+		fmt.Fprintf(&b, "    reviewed_at: %s\n", yamlString(stamp))
+		fmt.Fprint(&b, "    reason: \"<why this delta is acceptable>\"\n")
+	}
+	fmt.Fprint(&b, "```\n")
+	return b.String()
+}
+
+// deltaKey turns ("shell_commands", added) into "added_shell_command",
+// matching PRODUCT.md §8's example schema. v0.1 capability keys are all
+// regular plurals so a single trailing-`s` strip is enough.
+func deltaKey(capability string, change model.ChangeType) string {
+	verb := "added"
+	switch change {
+	case model.ChangeRemoved:
+		verb = "removed"
+	case model.ChangeModified:
+		verb = "modified"
+	}
+	return verb + "_" + strings.TrimSuffix(capability, "s")
+}
+
+// severityRank mirrors policy.severityRank so the two stay in lock-step.
+// We duplicate rather than import to avoid a circular dep — diff is
+// upstream of policy.
+func severityRank(s model.Severity) int {
+	switch s {
+	case model.SeverityHigh:
+		return 4
+	case model.SeverityMedium:
+		return 3
+	case model.SeverityLow:
+		return 2
+	case model.SeverityInfo:
+		return 1
+	}
+	return 0
+}
+
+// yamlString double-quotes a value and escapes the two characters that
+// would break a double-quoted YAML scalar. Diff values are URLs / paths /
+// command names; conservative quoting keeps the snippet parseable even
+// when the value contains spaces, colons, or globs.
+func yamlString(s string) string {
+	escaped := strings.ReplaceAll(s, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return `"` + escaped + `"`
 }

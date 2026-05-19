@@ -5,8 +5,19 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/skills-lock/skil-lock/internal/model"
 )
+
+// withFixedNow pins nowFunc to a deterministic time for the duration of a
+// test so RenderMarkdown's snippet timestamps are reproducible.
+func withFixedNow(t *testing.T, ts time.Time) {
+	t.Helper()
+	orig := nowFunc
+	nowFunc = func() time.Time { return ts }
+	t.Cleanup(func() { nowFunc = orig })
+}
 
 func emptyLockfile() model.Lockfile {
 	return model.NewLockfile("test", time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC))
@@ -224,5 +235,167 @@ func TestCompare_DeterministicOrder(t *testing.T) {
 	// First skill should be a-first, capability network_urls, value a before b.
 	if d1.Entries[0].Skill != "a-first" || d1.Entries[0].Value != "https://a" {
 		t.Errorf("sort order: first entry %+v", d1.Entries[0])
+	}
+}
+
+func TestRenderMarkdown_ReasonColumnSurfacesNotes(t *testing.T) {
+	withFixedNow(t, time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC))
+	d := model.Diff{
+		BaselinePath: "old.lock",
+		CurrentPath:  "cur.lock",
+		Entries: []model.DiffEntry{
+			{Skill: "pdf", Capability: "file_reads", Change: model.ChangeAdded,
+				Value: "./.env", Severity: model.SeverityHigh, Note: "matches protected_paths"},
+			{Skill: "pdf", Capability: "bundled_scripts", Change: model.ChangeAdded,
+				Value: "scripts/run.sh", Severity: model.SeverityLow},
+		},
+	}
+	md := RenderMarkdown(d, "")
+	// Header has the new column.
+	if !strings.Contains(md, "| Skill | Capability | Change | Detail | Reason |") {
+		t.Errorf("header missing Reason column:\n%s", md)
+	}
+	// Row with a populated Note shows it in the Reason cell.
+	if !strings.Contains(md, "| `./.env` | matches protected_paths |") {
+		t.Errorf("note not rendered in its own column:\n%s", md)
+	}
+	// Row with no Note shows the em-dash placeholder.
+	if !strings.Contains(md, "| `scripts/run.sh` | — |") {
+		t.Errorf("missing em-dash placeholder for empty Note:\n%s", md)
+	}
+}
+
+func TestRenderMarkdown_ApprovalsSnippetForBlockingDelta(t *testing.T) {
+	withFixedNow(t, time.Date(2026, 5, 19, 12, 30, 45, 0, time.UTC))
+	d := model.Diff{
+		BaselinePath: "old.lock",
+		CurrentPath:  "cur.lock",
+		Entries: []model.DiffEntry{
+			{Skill: "pdf-extractor", Capability: "shell_commands", Change: model.ChangeAdded,
+				Value: "curl", Severity: model.SeverityHigh, Note: "matches require_approval"},
+			{Skill: "pdf-extractor", Capability: "network_urls", Change: model.ChangeAdded,
+				Value: "https://api.openai.com/v1/x", Severity: model.SeverityMedium},
+			// Removed entries should never appear in the snippet — removing
+			// behavior is security-positive, no approval needed.
+			{Skill: "pdf-extractor", Capability: "shell_commands", Change: model.ChangeRemoved,
+				Value: "wget", Severity: model.SeverityInfo},
+		},
+	}
+	md := RenderMarkdown(d, "BLOCK: 2 of 3 entries at severity >= medium")
+
+	if !strings.Contains(md, "**To approve, append to `.skil-lock-approvals.yaml`:**") {
+		t.Fatalf("snippet header missing:\n%s", md)
+	}
+	if !strings.Contains(md, "```yaml") {
+		t.Fatalf("snippet fence missing:\n%s", md)
+	}
+	if !strings.Contains(md, `added_shell_command: "curl"`) {
+		t.Errorf("shell-add delta key wrong:\n%s", md)
+	}
+	if !strings.Contains(md, `added_network_url: "https://api.openai.com/v1/x"`) {
+		t.Errorf("network-add delta key wrong:\n%s", md)
+	}
+	if strings.Contains(md, `removed_shell_command`) {
+		t.Errorf("removals must not appear in snippet:\n%s", md)
+	}
+	if !strings.Contains(md, `reviewed_at: "2026-05-19T12:30:45Z"`) {
+		t.Errorf("timestamp not pinned via nowFunc:\n%s", md)
+	}
+}
+
+func TestRenderMarkdown_NoSnippetWhenNothingBlocking(t *testing.T) {
+	withFixedNow(t, time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC))
+	d := model.Diff{
+		BaselinePath: "old.lock",
+		CurrentPath:  "cur.lock",
+		Entries: []model.DiffEntry{
+			{Skill: "x", Capability: "allowed_tools", Change: model.ChangeAdded,
+				Value: "Read", Severity: model.SeverityLow},
+			{Skill: "x", Capability: "version", Change: model.ChangeModified,
+				OldValue: "1.0.0", Value: "1.0.1", Severity: model.SeverityInfo},
+		},
+	}
+	md := RenderMarkdown(d, "WARN")
+	if strings.Contains(md, "To approve") || strings.Contains(md, "```yaml") {
+		t.Errorf("snippet should not render below the threshold:\n%s", md)
+	}
+}
+
+func TestRenderMarkdown_SnippetParsesAsYAML(t *testing.T) {
+	withFixedNow(t, time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC))
+	d := model.Diff{
+		BaselinePath: "old.lock",
+		CurrentPath:  "cur.lock",
+		Entries: []model.DiffEntry{
+			{Skill: "code-review", Capability: "shell_commands", Change: model.ChangeAdded,
+				Value: `awk '/foo/ { print $1 }'`, Severity: model.SeverityHigh},
+			{Skill: "pdf", Capability: "file_writes", Change: model.ChangeAdded,
+				Value: `./output/"with quotes".txt`, Severity: model.SeverityMedium,
+				Note: "matches require_approval"},
+		},
+	}
+	md := RenderMarkdown(d, "BLOCK")
+
+	// Extract the fenced yaml block. The snippet is always at the end of
+	// the rendered output, so anchor on the opening fence.
+	start := strings.Index(md, "```yaml\n")
+	if start < 0 {
+		t.Fatalf("no yaml fence in output:\n%s", md)
+	}
+	body := md[start+len("```yaml\n"):]
+	end := strings.Index(body, "```")
+	if end < 0 {
+		t.Fatalf("no closing fence:\n%s", md)
+	}
+	yamlBody := body[:end]
+
+	var parsed struct {
+		SchemaVersion string `yaml:"schema_version"`
+		Approvals     []struct {
+			Skill      string            `yaml:"skill"`
+			Delta      map[string]string `yaml:"delta"`
+			Reviewer   string            `yaml:"reviewer"`
+			ReviewedAt string            `yaml:"reviewed_at"`
+			Reason     string            `yaml:"reason"`
+		} `yaml:"approvals"`
+	}
+	if err := yaml.Unmarshal([]byte(yamlBody), &parsed); err != nil {
+		t.Fatalf("snippet failed to parse as YAML: %v\nsnippet:\n%s", err, yamlBody)
+	}
+	if parsed.SchemaVersion != "0.1" {
+		t.Errorf("schema_version: want 0.1, got %q", parsed.SchemaVersion)
+	}
+	if len(parsed.Approvals) != 2 {
+		t.Fatalf("want 2 approval entries, got %d: %+v", len(parsed.Approvals), parsed.Approvals)
+	}
+	// Round-trip preserves the embedded single quotes + double quotes.
+	first := parsed.Approvals[0]
+	if first.Skill != "code-review" || first.Delta["added_shell_command"] != `awk '/foo/ { print $1 }'` {
+		t.Errorf("awk delta did not round-trip cleanly: %+v", first)
+	}
+	second := parsed.Approvals[1]
+	if second.Delta["added_file_write"] != `./output/"with quotes".txt` {
+		t.Errorf("quoted path did not round-trip cleanly: %+v", second)
+	}
+}
+
+func TestDeltaKey(t *testing.T) {
+	cases := []struct {
+		cap, want string
+		change    model.ChangeType
+	}{
+		{"shell_commands", "added_shell_command", model.ChangeAdded},
+		{"network_urls", "added_network_url", model.ChangeAdded},
+		{"file_reads", "added_file_read", model.ChangeAdded},
+		{"file_writes", "added_file_write", model.ChangeAdded},
+		{"allowed_tools", "added_allowed_tool", model.ChangeAdded},
+		{"bundled_scripts", "added_bundled_script", model.ChangeAdded},
+		{"shell_commands", "removed_shell_command", model.ChangeRemoved},
+		{"version", "modified_version", model.ChangeModified},
+	}
+	for _, c := range cases {
+		if got := deltaKey(c.cap, c.change); got != c.want {
+			t.Errorf("deltaKey(%q,%v) = %q, want %q", c.cap, c.change, got, c.want)
+		}
 	}
 }
