@@ -35,7 +35,7 @@ import (
 const FileName = ".skil-lock-approvals.yaml"
 
 // SchemaVersionV01 is the only schema tag accepted by Load. Bumping
-// this requires a migration plan in PRODUCT.md §8.
+// this requires a migration plan; see SPEC.md for the schema definition.
 const SchemaVersionV01 = "0.1"
 
 var (

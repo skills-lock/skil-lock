@@ -1,6 +1,6 @@
 # Contributing to skil-lock
 
-Thanks for your interest. The project is early; the surface is intentionally narrow (see [`PRODUCT.md`](./PRODUCT.md) §16 for the out-of-scope list). Issues and PRs that fit the locked scope are very welcome.
+Thanks for your interest. The project is early; the surface is intentionally narrow (see the "What's NOT in v0.1" section in the [README](./README.md) for the list). Issues and PRs that fit the locked scope are very welcome.
 
 ## Quick start
 
@@ -33,7 +33,7 @@ go run ./cmd/skil-lock scan ./testdata/skills/pdf-extractor
 3. **Tests required.** Detectors need positive + negative fixtures. Parsers need round-trip tests.
 4. **Sign your commits.** SSH or GPG. `git config --global commit.gpgsign true`. Branch protection rejects unsigned commits on `main`.
 5. **CLA.** The first PR from a new contributor triggers a one-time CLA via [cla-assistant.io](https://cla-assistant.io) (web-based, ~30 seconds).
-6. **Docs.** If you change the lockfile schema, policy schema, CLI surface, or detector behavior, update [`PRODUCT.md`](./PRODUCT.md) in the same PR (changelog entry at the top of §18).
+6. **Docs.** If you change the lockfile schema, policy schema, CLI surface, or detector behavior, update [`SPEC.md`](./SPEC.md) and the relevant README section in the same PR.
 
 ## Reporting bugs / security issues
 

@@ -131,7 +131,7 @@ To keep the scope narrow and the positioning clean:
 - No known-bad pattern database — that's Mondoo's lane
 - No web dashboard or registry
 
-See [`SPEC.md`](./SPEC.md) for the full file-format specification and [`PRODUCT.md` in the planning repo](https://github.com/skills-lock/planning) (private) for the locked design decisions and out-of-scope list.
+See [`SPEC.md`](./SPEC.md) for the full file-format specification. The out-of-scope list above is the canonical statement of what v0.1 will and will not do.
 
 ## Project status
 

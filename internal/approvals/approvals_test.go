@@ -16,7 +16,7 @@ approvals:
   - skill: pdf-extractor
     delta:
       added_shell_command: "curl"
-    reviewer: "max19900@gmail.com"
+    reviewer: "reviewer@example.com"
     reviewed_at: "2026-05-19T13:30:00Z"
     reason: "Needed for fetching PDF test fixtures."
   - skill: code-review

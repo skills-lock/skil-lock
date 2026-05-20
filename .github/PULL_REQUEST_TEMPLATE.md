@@ -22,4 +22,4 @@
 - [ ] `go test ./...` passes locally
 - [ ] `golangci-lint run` clean
 - [ ] Public API change documented in `SPEC.md` (if applicable)
-- [ ] `PRODUCT.md` updated (if behavior surface or schema changed)
+- [ ] README updated (if behavior surface or scope changed)

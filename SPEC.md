@@ -211,7 +211,7 @@ MAY claim **`skills.lock v0.1 conformant`** in its documentation and badges.
 
 Changes to this spec are tracked via Pull Requests on the [skil-lock repository](https://github.com/skills-lock/skil-lock). Material changes (breaking, deprecating, adding required fields) bump the `schema_version`.
 
-This document is intentionally short. Implementation hints, edge-case discussions, and rationale live in the [`PRODUCT.md`](https://github.com/skills-lock/planning) (private planning repo) and the reference implementation's source comments.
+This document is intentionally short. Implementation hints, edge-case discussions, and rationale live in the reference implementation's source comments and commit history.
 
 ## 15. Trademarks
 

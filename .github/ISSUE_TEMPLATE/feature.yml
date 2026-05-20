@@ -28,7 +28,7 @@ body:
     id: scope
     attributes:
       label: In-scope check
-      description: This project is intentionally narrow (see PRODUCT.md §16). Confirm this isn't on the out-of-scope list.
+      description: This project is intentionally narrow. See the "What's NOT in v0.1" section in the README before filing.
       options:
-        - label: I've checked PRODUCT.md and this isn't on the out-of-scope list
+        - label: I've read the "What's NOT in v0.1" list in the README and this request is not on it
           required: true

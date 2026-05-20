@@ -254,9 +254,9 @@ func changeOrder(c model.ChangeType) int {
 	return 3
 }
 
-// RenderMarkdown formats a diff for a PR comment. The shape follows
-// MOCKUPS.md / PRODUCT.md §13: short header, capability table with a
-// per-row Reason column (sourced from DiffEntry.Note, which policy.Apply
+// RenderMarkdown formats a diff for a PR comment: short header,
+// capability table with a per-row Reason column (sourced from
+// DiffEntry.Note, which policy.Apply
 // populates with rule-fired explanations), then a verdict line, then a
 // copy-paste .skil-lock-approvals.yaml snippet when any added entry is
 // at severity >= SnippetThreshold. The snippet is the wedge versus
@@ -323,9 +323,10 @@ func changeMarker(c model.ChangeType) string {
 	return "?"
 }
 
-// renderApprovalsSnippet returns a fenced YAML block conforming to
-// PRODUCT.md §8, pre-filled with one approval entry per added delta at
-// severity >= SnippetThreshold. Returns "" if no such deltas exist.
+// renderApprovalsSnippet returns a fenced YAML block conforming to the
+// .skil-lock-approvals.yaml schema, pre-filled with one approval entry
+// per added delta at severity >= SnippetThreshold. Returns "" if no
+// such deltas exist.
 //
 // Reviewer + reason fields are placeholders the reviewer fills in;
 // reviewed_at is the current wall clock (UTC, second precision) so a
@@ -363,8 +364,9 @@ func renderApprovalsSnippet(d model.Diff) string {
 }
 
 // DeltaKey turns ("shell_commands", added) into "added_shell_command",
-// matching PRODUCT.md §8's example schema. v0.1 capability keys are all
-// regular plurals so a single trailing-`s` strip is enough.
+// matching the .skil-lock-approvals.yaml delta key shape. v0.1
+// capability keys are all regular plurals so a single trailing-`s`
+// strip is enough.
 //
 // Exported because internal/approvals reads .skil-lock-approvals.yaml
 // and must match incoming delta keys against entries in a model.Diff;
