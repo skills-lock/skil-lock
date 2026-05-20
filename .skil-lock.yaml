@@ -1,0 +1,23 @@
+# SkilLock policy file — pinned via skil-lock against this repo's own
+# .claude/skills/. The repo itself uses warn mode while v0.1 ships;
+# upgrade to block once the policy has stabilized.
+
+mode: warn
+
+# Capabilities that should require an explicit approval entry in
+# .skil-lock-approvals.yaml when added by a skill.
+require_approval:
+  - shell_commands
+
+# File paths skills must not read or write.
+protected_paths:
+  - .env
+  - "**/*.pem"
+  - "**/secrets/**"
+
+# Allowed network hosts (glob-matched). Empty disables the rule;
+# we set a small allowlist so a skill suddenly reaching the open
+# internet trips the policy.
+allowed_domains:
+  - api.github.com
+  - "*.githubusercontent.com"
