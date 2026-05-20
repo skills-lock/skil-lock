@@ -100,9 +100,10 @@ func TestRepo_RecordsParseErrorsButKeepsGoing(t *testing.T) {
 		"# ok\n",
 		nil,
 	)
-	// One malformed skill (missing version).
+	// One malformed skill (missing the required `name` field; version
+	// became optional in v0.1 to match real-world Claude/Codex skills).
 	mkSkill(t, root, ".claude", "broken",
-		"name: broken\n",
+		"description: broken — no name field\n",
 		"# broken\n",
 		nil,
 	)

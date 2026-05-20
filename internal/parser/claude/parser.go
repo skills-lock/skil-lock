@@ -118,7 +118,9 @@ func parseWithRuntime(dir string, rt model.Runtime) (Parsed, error) {
 	if err != nil {
 		return Parsed{}, fmt.Errorf("%s: %w", skillPath, err)
 	}
-	version, err := requiredString(fmMap, "version")
+	// version is optional: real-world skills (openai/skills, trailofbits/skills)
+	// often omit it. Absent / empty becomes "" in the lockfile.
+	version, err := optionalString(fmMap, "version")
 	if err != nil {
 		return Parsed{}, fmt.Errorf("%s: %w", skillPath, err)
 	}
@@ -214,6 +216,35 @@ func requiredString(fm map[string]any, key string) (string, error) {
 		return "", fmt.Errorf("%w: %q must be non-empty", ErrMissingRequiredField, key)
 	}
 	return s, nil
+}
+
+// optionalString returns the scalar value at key (coerced to string,
+// trimmed) or empty string if the key is absent or its value is blank.
+// Unlike requiredString it never returns ErrMissingRequiredField — the
+// caller decides what an empty value means.
+func optionalString(fm map[string]any, key string) (string, error) {
+	v, ok := fm[key]
+	if !ok {
+		return "", nil
+	}
+	var s string
+	switch t := v.(type) {
+	case nil:
+		return "", nil
+	case string:
+		s = t
+	case int:
+		s = fmt.Sprintf("%d", t)
+	case int64:
+		s = fmt.Sprintf("%d", t)
+	case float64:
+		s = fmt.Sprintf("%g", t)
+	case bool:
+		s = fmt.Sprintf("%v", t)
+	default:
+		return "", fmt.Errorf("%w: %q must be a scalar", ErrMissingRequiredField, key)
+	}
+	return strings.TrimSpace(s), nil
 }
 
 // stringList coerces a YAML scalar / sequence value into a sorted,

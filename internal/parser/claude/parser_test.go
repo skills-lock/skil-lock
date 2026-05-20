@@ -132,12 +132,27 @@ func TestParse_NoFrontmatter(t *testing.T) {
 	}
 }
 
-func TestParse_MissingRequiredField(t *testing.T) {
-	_, err := Parse(filepath.Join("testdata", "missing-version"))
+func TestParse_VersionOptional(t *testing.T) {
+	// Real-world skills (openai/skills, trailofbits/skills) routinely omit
+	// the version field; parser must accept that and emit an empty version.
+	p, err := Parse(filepath.Join("testdata", "missing-version"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if p.Identity.Name != "missing-version" {
+		t.Errorf("Name: want %q, got %q", "missing-version", p.Identity.Name)
+	}
+	if p.Identity.Version != "" {
+		t.Errorf("Version: want empty, got %q", p.Identity.Version)
+	}
+}
+
+func TestParse_MissingName(t *testing.T) {
+	_, err := Parse(filepath.Join("testdata", "missing-name"))
 	if !errors.Is(err, ErrMissingRequiredField) {
 		t.Errorf("want ErrMissingRequiredField, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "version") {
+	if !strings.Contains(err.Error(), "name") {
 		t.Errorf("error should mention the missing field; got %v", err)
 	}
 }
