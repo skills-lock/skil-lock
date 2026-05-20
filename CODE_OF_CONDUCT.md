@@ -34,7 +34,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainer at **conduct@skil-lock.dev**. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to the project maintainer by opening a [GitHub Security Advisory](https://github.com/skills-lock/skil-lock/security/advisories/new) (which functions as a private channel with the maintainers — not only for security issues) and labelling the first comment `conduct`. All complaints will be reviewed and investigated promptly and fairly.
 
 ## Attribution
 

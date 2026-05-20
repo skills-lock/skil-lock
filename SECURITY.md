@@ -11,9 +11,10 @@ Use the **"Report a vulnerability"** button at:
 
 This opens a private channel with the maintainers, gives you a CVE-eligible identifier, and tracks the fix to disclosure.
 
-### Backup: Email
-
-If you cannot use GHSA for any reason, email **security@skil-lock.dev**. Forwarded to the maintainer; expect acknowledgement within 72 hours.
+If GHSA is unavailable for any reason, open a public issue with no
+vulnerability details, and request a private channel in the first
+comment; a maintainer will follow up. (A dedicated email contact is
+not configured for v0.1 — GHSA is the supported path.)
 
 ## Scope
 
