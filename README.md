@@ -48,11 +48,16 @@ Approve by pasting four lines into the override file, push, the check turns gree
 In your repo (where `.claude/skills/` or `.codex/skills/` lives):
 
 ```bash
-# 1. Download the binary
-curl -sL https://github.com/skills-lock/skil-lock/releases/latest/download/skil-lock_linux_amd64.tar.gz | tar -xz
+# 1. Install (pick one):
+
+# Option A: via go install (needs Go 1.22+)
+go install github.com/skills-lock/skil-lock/cmd/skil-lock@v0.1.0
+
+# Option B: precompiled binary (Linux amd64; see Releases for other platforms)
+curl -sL https://github.com/skills-lock/skil-lock/releases/download/v0.1.0/skil-lock_0.1.0_linux_amd64.tar.gz | tar -xz
 
 # 2. Accept your current skills as the approved baseline
-./skil-lock init --baseline .
+skil-lock init --baseline .
 
 # 3. Commit the lockfile
 git add skills.lock
