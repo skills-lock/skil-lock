@@ -1,45 +1,149 @@
 # SkilLock
 
-> **Status: early development, private.** This repo is the canonical home of the `skil-lock` CLI and the `skills.lock` file format. There is no install yet; the first release will be tagged `v0.1.0`. Watch this repo for updates.
+**Lock the *behavior* of your AI Skills. See exactly what changed in every Pull Request.**
 
-**`skil-lock`** pins approved AI Skill behavior and blocks unapproved drift in CI.
+`skil-lock` pins the capability surface — shell commands, network URLs, file paths — of every Claude Code and Codex Skill in your repository. On every PR, a GitHub Action posts a comment showing **what changed**.
 
-*package-lock + Dependabot + PR security review, for AI Skills.*
+Hash pinning catches tampering. SkilLock catches *what the skill is now doing*.
 
-## What it does (target v0.1)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+[![Spec: v0.1](https://img.shields.io/badge/skills.lock-v0.1-green.svg)](./SPEC.md)
 
-When AI coding agents like Claude Code or Codex install [Skills](https://code.claude.com/docs/en/skills), those skills can run shell commands, hit the network, and read or write files in your repo. **`skil-lock` records the approved behavior surface in a committed `skills.lock` file** — and a GitHub Action posts a PR comment showing exactly which capabilities changed in every diff.
+---
 
-- **`skills.lock`** — the artifact. Records each Skill's shell commands, network URLs, file reads/writes, and bundled scripts.
-- **`.skil-lock.yaml`** — the policy. Set `mode: warn` or `block`, define protected paths and allowed domains.
-- **`.skil-lock-approvals.yaml`** — the audit trail. Reviewer + reason + timestamp for every approved behavior delta.
-- **GitHub Action** — runs on every PR, posts a capability-delta comment, sets check status.
+## What it actually does
 
-## Why not just hash-pin?
+When AI coding agents like [Claude Code](https://code.claude.com/docs/en/skills) or [Codex](https://developers.openai.com/codex/skills) install Skills, those skills can run shell commands, hit the network, and read or write files in your repo.
 
-Hashes detect tampering. They don't tell a reviewer *what changed*. `skil-lock` records behavior, so a PR comment can say "this skill now also runs `curl` and reads `.env`" instead of "the hash changed."
+SkilLock records that capability surface in a committed `skills.lock` file. Every PR re-scans, computes the delta, and posts something like this:
 
-## v0.1 scope
+```
+### SkilLock — capability changes
 
-- Runtimes: **Claude Code + Codex** (same SKILL.md format)
-- Three deterministic detectors: shell execution, external network, protected-path reads
-- CLI: `scan`, `lock`, `init --baseline`, `list`, `diff`, `verify`, `ci`
+| Skill | Change | Capability | Detail | Reason |
+|---|---|---|---|---|
+| code-review | added | shell_commands | curl | — |
+| code-review | added | network_urls | https://api.evil.example.com | host not in allowed_domains |
+| code-review | added | file_reads | ./.env | matches protected_paths |
+
+**BLOCK: 3 of 3 entries at severity >= medium**
+
+Paste into `.skil-lock-approvals.yaml` to approve:
+
+```yaml
+schema_version: "0.1"
+approvals:
+  - skill: code-review
+    delta: {added_shell_command: "curl"}
+    reviewer: "REPLACE_ME"
+    reviewed_at: 2026-05-20T14:00:00Z
+    reason: "REPLACE_ME"
+```
+```
+
+Approve by pasting four lines into the override file, push, the check turns green.
+
+## 60-second install
+
+In your repo (where `.claude/skills/` or `.codex/skills/` lives):
+
+```bash
+# 1. Download the binary
+curl -sL https://github.com/skills-lock/skil-lock/releases/latest/download/skil-lock_linux_amd64.tar.gz | tar -xz
+
+# 2. Accept your current skills as the approved baseline
+./skil-lock init --baseline .
+
+# 3. Commit the lockfile
+git add skills.lock
+git commit -m "Pin approved AI Skill behavior"
+```
+
+To run on every PR, add `.github/workflows/skil-lock.yml`:
+
+```yaml
+name: SkilLock
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  skil-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: skills-lock/skil-lock-action@v0.1.0
+        with:
+          pin-binary: v0.1.0
+```
+
+For non-Linux, see the [releases page](https://github.com/skills-lock/skil-lock/releases) for macOS (Intel + Apple Silicon) and Windows builds.
+
+## Why behavior, not hash?
+
+A hash tells you *something* changed. It does not tell you *what*. When a reviewer sees `content_hash: sha256:abc → sha256:def` they have to read the entire diff to understand what's different.
+
+SkilLock records the surfaces that matter for security review:
+
+- **Shell commands** — does this skill now run `curl`? `rm`? `bash`?
+- **Network URLs** — what hosts does it reach? Did a new one appear?
+- **File reads / writes** — does it read `.env` now? Write to `dist/`?
+- **Allowed tools** — what Claude/Codex tools did the author grant?
+- **Bundled scripts** — what shipped alongside the markdown?
+
+A reviewer sees `added file_reads: ./.env` and immediately knows what to ask.
+
+## How it compares
+
+| Tool | Style | What it pins | License |
+|---|---|---|---|
+| **SkilLock** (this) | Post-install, PR workflow | **Behavior surface** (shell, URLs, paths) | Apache 2.0 |
+| Snyk Agent Scan | Pre-install scanner | n/a (on-demand scan) | Commercial |
+| Mondoo Skills Check | Pre-install scanner | n/a (on-demand scan) | Commercial |
+| SkillFortify | Post-install | Hash + coarse capabilities | Elastic 2.0 |
+| pcomans/skills-lock | Post-install | Git commit SHA only | MIT |
+| `gh skill --pin` | Built into GitHub CLI | Tag / SHA | (GitHub CLI license) |
+
+If you want known-bad pattern scanning before you install a skill, use Snyk or Mondoo. If you want a *committed file* that lets reviewers see capability changes in every PR, use this.
+
+## What's in v0.1
+
+- CLI: `scan`, `lock`, `init --baseline`, `list`, `diff`, `ci`
+- Runtimes: **Claude Code** and **Codex** (same `SKILL.md` format)
+- Three deterministic detectors: shell execution, external network, protected-path reads/writes
+- `skills.lock` — committed baseline, schema spec'd in [SPEC.md](./SPEC.md)
+- `.skil-lock.yaml` — policy (warn vs block, protected paths, allowed domains)
+- `.skil-lock-approvals.yaml` — override audit trail (reviewer + reason + timestamp)
 - GitHub Action with PR-comment renderer
 
-Out of scope for v0.1: runtime guard, Cursor/Windsurf/MCP parsers, AI-assisted detection, dashboards. See [`PRODUCT.md`](./PRODUCT.md) §16 for the full out-of-scope list.
+## What's NOT in v0.1 (intentionally)
+
+To keep the scope narrow and the positioning clean:
+
+- No runtime guard / Claude Code hooks integration — different problem
+- No Cursor / Windsurf / MCP parsers — different file formats; expand based on demand
+- No AI-assisted detection — three deterministic detectors only
+- No known-bad pattern database — that's Mondoo's lane
+- No web dashboard or registry
+
+See [`SPEC.md`](./SPEC.md) for the full file-format specification and [`PRODUCT.md` in the planning repo](https://github.com/skills-lock/planning) (private) for the locked design decisions and out-of-scope list.
 
 ## Project status
 
-- **Phase 0** — design partner validation
-- **Phase 1** — CLI v0.1 build
-- **Phase 2** — GitHub Action + PR-comment renderer
-- **Phase 3** — public launch + `SPEC.md`
-- **Day 30** — kill criterion gate
+- Phase 0–2 complete (CLI + GitHub Action shipped)
+- Currently in launch prep (Phase 3)
+- v0.1.0-rc1 available; v0.1.0 follows the public launch
 
 ## License
 
-[Apache 2.0](./LICENSE). Contributions covered by a one-time CLA via cla-assistant.io (see [`CONTRIBUTING.md`](./CONTRIBUTING.md)).
+Apache 2.0 — see [LICENSE](./LICENSE). Contributions are covered by a one-time CLA via [cla-assistant.io](https://cla-assistant.io) (see [CONTRIBUTING.md](./CONTRIBUTING.md)).
 
 ## Security
 
-See [`SECURITY.md`](./SECURITY.md). Report vulnerabilities via [GitHub Security Advisories](https://github.com/skills-lock/skil-lock/security/advisories/new), not public issues.
+Report vulnerabilities privately via [GitHub Security Advisories](https://github.com/skills-lock/skil-lock/security/advisories/new). See [SECURITY.md](./SECURITY.md). Do not file public issues for vulnerabilities.
+
+## Trademarks
+
+`SkilLock` and `skil-lock` are not affiliated with or endorsed by Skil power tools (a brand owned by Chervon Group). The name comes from "Skill Lock" and refers to AI Skills, not to power tools.
+
+`Claude` and `Claude Code` are trademarks of Anthropic PBC. `Codex` is a trademark of OpenAI, OpCo, LLC. References to these names in this project are descriptive (nominative fair use) and do not imply affiliation with or endorsement by either company.

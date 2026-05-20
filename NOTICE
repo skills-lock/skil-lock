@@ -1,0 +1,30 @@
+SkilLock — pin approved AI Skill behavior; block unapproved drift in CI.
+Copyright 2026 The SkilLock Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this software except in compliance with the License. A copy of
+the License is in the LICENSE file at the root of this repository, and
+is also available at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+implied. See the License for the specific language governing
+permissions and limitations under the License.
+
+
+Trademarks
+----------
+
+SkilLock and skil-lock are not affiliated with or endorsed by Skil
+power tools (a brand owned by Chervon Group). The name "SkilLock" is a
+contraction of "Skill Lock" and refers to AI Skills, not to power
+tools.
+
+Claude and Claude Code are trademarks of Anthropic PBC. Codex is a
+trademark of OpenAI, OpCo, LLC. References to these names in
+SkilLock's documentation and source code are descriptive (nominative
+fair use) and do not imply affiliation with or endorsement by either
+company.

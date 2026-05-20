@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/skills-lock/skil-lock/main/schemas/skills.lock-v0.1.json",
+  "title": "skills.lock v0.1",
+  "description": "Approved AI Skill capability surface. See SPEC.md at https://github.com/skills-lock/skil-lock/blob/main/SPEC.md",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "generated_by", "skills"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1",
+      "description": "Lockfile schema version. v0.1 is the only currently published value."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 UTC timestamp, second precision."
+    },
+    "generated_by": {
+      "type": "string",
+      "pattern": "^\\S+ \\S+$",
+      "description": "Tool identifier and version, space-separated. Example: 'skil-lock 0.1.0'."
+    },
+    "skills": {
+      "type": "object",
+      "description": "Map of skill name to skill entry. Empty map (`{}`) when no skills are present.",
+      "additionalProperties": {
+        "$ref": "#/$defs/skillEntry"
+      }
+    }
+  },
+  "$defs": {
+    "skillEntry": {
+      "type": "object",
+      "required": ["runtime", "source_path", "content_hash", "behavior"],
+      "additionalProperties": false,
+      "properties": {
+        "runtime": {
+          "enum": ["claude", "codex"],
+          "description": "AI runtime this skill targets. v0.2 may add 'cursor', 'windsurf', 'mcp'."
+        },
+        "source_path": {
+          "type": "string",
+          "description": "Forward-slash, repo-relative path to the SKILL.md file."
+        },
+        "version": {
+          "type": "string",
+          "description": "Free-form version string from SKILL.md frontmatter; empty when the skill does not declare one."
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "SHA-256 of the SKILL.md raw bytes."
+        },
+        "behavior": {
+          "$ref": "#/$defs/behavior"
+        }
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "required": ["shell_commands", "network_urls", "file_reads", "file_writes", "allowed_tools", "bundled_scripts"],
+      "additionalProperties": false,
+      "properties": {
+        "shell_commands": {"$ref": "#/$defs/stringList"},
+        "network_urls": {"$ref": "#/$defs/stringList"},
+        "file_reads": {"$ref": "#/$defs/stringList"},
+        "file_writes": {"$ref": "#/$defs/stringList"},
+        "allowed_tools": {"$ref": "#/$defs/stringList"},
+        "bundled_scripts": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true,
+      "description": "Sorted ascending, deduplicated list of strings. Empty list ([]) is allowed."
+    }
+  }
+}
