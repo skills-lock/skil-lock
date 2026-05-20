@@ -18,10 +18,6 @@ jobs:
     name: Analyze (Go)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # GitHub Advanced Security is required for code scanning on private
-    # repos and is not free on free-tier orgs. Skip until the repo flips
-    # public in Phase 3; the job records as skipped/success in the meantime.
-    if: ${{ !github.event.repository.private }}
 
     steps:
       - name: Checkout
