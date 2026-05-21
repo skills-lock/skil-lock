@@ -111,6 +111,22 @@ A reviewer sees `added file_reads: ./.env` and immediately knows what to ask.
 
 If you want known-bad pattern scanning before you install a skill, use Snyk or Mondoo. If you want a *committed file* that lets reviewers see capability changes in every PR, use this.
 
+## Examples & integrations
+
+- **Live demo repo**: [`skills-lock/example-claude-code-skills`](https://github.com/skills-lock/example-claude-code-skills) shows three working Claude Code skills with a clean `skills.lock` baseline. The [`example/drift`](https://github.com/skills-lock/example-claude-code-skills/tree/example/drift) branch adds a `curl` to an unallowed host so you can see the BLOCK output on a real PR.
+- **Worked `skills.lock` file**: [SPEC.md §11](./SPEC.md#11-example) walks through a complete lockfile with multiple skills and detector outputs.
+- **JSON Schema** for editor auto-complete: [`schemas/skills.lock-v0.1.json`](./schemas/skills.lock-v0.1.json). Drop into VSCode `settings.json`:
+
+  ```jsonc
+  {
+    "yaml.schemas": {
+      "https://raw.githubusercontent.com/skills-lock/skil-lock/main/schemas/skills.lock-v0.1.json": "skills.lock"
+    }
+  }
+  ```
+
+- **Interoperability — SARIF + Code Scanning**: see the [GitHub Security tab integration](#github-security-tab-integration-sarif) section above.
+
 ## What's in v0.1
 
 - CLI: `scan`, `lock`, `init --baseline`, `list`, `diff`, `ci`
