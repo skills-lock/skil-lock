@@ -98,6 +98,18 @@ SkilLock records the surfaces that matter for security review:
 
 A reviewer sees `added file_reads: ./.env` and immediately knows what to ask.
 
+## Compatibility
+
+| Agent / runtime | Status in v0.1 | Notes |
+|---|---|---|
+| **Claude Code** | ✅ Supported | Parses `.claude/skills/*/SKILL.md` (YAML frontmatter + Markdown + bundled scripts) |
+| **Codex** | ✅ Supported | Same `SKILL.md` format; parses `.codex/skills/*/SKILL.md` |
+| **Cursor** | 🟡 Planned | Uses a different `manifest.json` format — needs a new parser; tracking demand |
+| **Copilot Skills** | 🟡 Planned | Format still stabilising; tracking demand |
+| **Windsurf / MCP** | 🟡 Planned | Same as above — open an issue if you'd use it |
+
+Want a runtime added? Open an issue with a real `SKILL.md`-equivalent fixture from your project; that's the fastest path.
+
 ## How it compares
 
 | Tool | Style | What it pins | License |
