@@ -438,6 +438,95 @@ approvals:
 	}
 }
 
+func TestE2E_CISARIFFormat(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)
+	if _, _, err := runCmd(t, "lock", root); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	writeFile(t, root, ".skil-lock.yaml", "mode: warn\n")
+	writeFile(t, root, ".claude/skills/benign/SKILL.md",
+		benignSkill+"\n```bash\ncurl https://newdep.example\n```\n")
+
+	stdout, _, err := runCmd(t, "ci", "--format", "sarif", root)
+	if err != nil {
+		t.Fatalf("ci --format sarif: %v", err)
+	}
+
+	var doc struct {
+		Version string `json:"version"`
+		Runs    []struct {
+			Tool struct {
+				Driver struct {
+					Name  string `json:"name"`
+					Rules []struct {
+						ID string `json:"id"`
+					} `json:"rules"`
+				} `json:"driver"`
+			} `json:"tool"`
+			Results []struct {
+				RuleID  string `json:"ruleId"`
+				Level   string `json:"level"`
+				Message struct {
+					Text string `json:"text"`
+				} `json:"message"`
+				Locations []struct {
+					PhysicalLocation struct {
+						ArtifactLocation struct {
+							URI string `json:"uri"`
+						} `json:"artifactLocation"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("--format sarif stdout is not JSON: %v\n%s", err, stdout)
+	}
+	if doc.Version != "2.1.0" {
+		t.Errorf("SARIF version: want 2.1.0, got %q", doc.Version)
+	}
+	if len(doc.Runs) != 1 || doc.Runs[0].Tool.Driver.Name != "skil-lock" {
+		t.Errorf("driver missing or wrong: %+v", doc.Runs)
+	}
+	if len(doc.Runs[0].Tool.Driver.Rules) != 6 {
+		t.Errorf("rule count: want 6, got %d", len(doc.Runs[0].Tool.Driver.Rules))
+	}
+	if len(doc.Runs[0].Results) == 0 {
+		t.Fatalf("expected at least one result, got none:\n%s", stdout)
+	}
+	found := false
+	for _, r := range doc.Runs[0].Results {
+		if r.RuleID == "SKL-SHELL" && strings.Contains(r.Message.Text, "curl") {
+			found = true
+			if len(r.Locations) != 1 {
+				t.Errorf("expected location on benign result, got %d", len(r.Locations))
+			} else if !strings.Contains(r.Locations[0].PhysicalLocation.ArtifactLocation.URI, "SKILL.md") {
+				t.Errorf("location URI should point at SKILL.md: %q",
+					r.Locations[0].PhysicalLocation.ArtifactLocation.URI)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected a SKL-SHELL result mentioning curl:\n%s", stdout)
+	}
+}
+
+func TestE2E_CIInvalidFormatFails(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)
+	if _, _, err := runCmd(t, "lock", root); err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	_, _, err := runCmd(t, "ci", "--format", "junit", root)
+	if err == nil {
+		t.Fatal("invalid --format should fail")
+	}
+	if !strings.Contains(err.Error(), "invalid --format") {
+		t.Errorf("error should mention invalid --format; got %v", err)
+	}
+}
+
 func TestE2E_CIMissingLockfileIsError(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".claude/skills/benign/SKILL.md", benignSkill)

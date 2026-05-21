@@ -13,7 +13,14 @@ import (
 	"github.com/skills-lock/skil-lock/internal/lockfile"
 	"github.com/skills-lock/skil-lock/internal/model"
 	"github.com/skills-lock/skil-lock/internal/policy"
+	"github.com/skills-lock/skil-lock/internal/sarif"
 	"github.com/skills-lock/skil-lock/internal/scan"
+)
+
+// Output formats accepted by `skil-lock ci --format`.
+const (
+	formatMarkdown = "markdown"
+	formatSARIF    = "sarif"
 )
 
 const (
@@ -34,7 +41,7 @@ var errBlocking = errors.New("policy block: capability deltas require approval")
 const blockingThreshold = model.SeverityMedium
 
 func newCICmd() *cobra.Command {
-	var policyPath, lockPath, approvalsPath string
+	var policyPath, lockPath, approvalsPath, format string
 	cmd := &cobra.Command{
 		Use:   "ci [path]",
 		Short: "Verify [path] against its committed skills.lock and .skil-lock.yaml.",
@@ -53,6 +60,12 @@ see.`,
 			root := "."
 			if len(args) == 1 {
 				root = args[0]
+			}
+
+			switch format {
+			case formatMarkdown, formatSARIF:
+			default:
+				return fmt.Errorf("invalid --format %q (want %q or %q)", format, formatMarkdown, formatSARIF)
 			}
 
 			pol, err := loadPolicy(cmd, root, policyPath)
@@ -100,7 +113,17 @@ see.`,
 			policy.Apply(&d, pol)
 
 			verdict, blocked := decide(d, pol)
-			_, _ = fmt.Fprint(cmd.OutOrStdout(), diff.RenderMarkdown(d, verdict))
+			switch format {
+			case formatSARIF:
+				doc, err := sarif.Render(d, current, version)
+				if err != nil {
+					return fmt.Errorf("render sarif: %w", err)
+				}
+				_, _ = cmd.OutOrStdout().Write(doc)
+				_, _ = fmt.Fprintln(cmd.OutOrStdout())
+			default:
+				_, _ = fmt.Fprint(cmd.OutOrStdout(), diff.RenderMarkdown(d, verdict))
+			}
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), verdict)
 
 			if blocked {
@@ -112,6 +135,7 @@ see.`,
 	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .skil-lock.yaml (default: <path>/.skil-lock.yaml)")
 	cmd.Flags().StringVar(&lockPath, "lockfile", "", "Path to skills.lock (default: <path>/skills.lock)")
 	cmd.Flags().StringVar(&approvalsPath, "approvals", "", "Path to .skil-lock-approvals.yaml (default: <path>/.skil-lock-approvals.yaml)")
+	cmd.Flags().StringVar(&format, "format", formatMarkdown, "Output format: markdown (default; PR comment) or sarif (GitHub Code Scanning)")
 	return cmd
 }
 

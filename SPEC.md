@@ -207,12 +207,25 @@ A tool that:
 
 MAY claim **`skills.lock v0.1 conformant`** in its documentation and badges.
 
-## 14. Spec maintenance
+## 14. Interoperability — SARIF v2.1.0
+
+The reference implementation can additionally emit a [SARIF v2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html) document for each capability delta so findings can flow into [GitHub Code Scanning](https://docs.github.com/en/code-security/code-scanning) and other SARIF consumers.
+
+This is **not** required by the spec — a conforming tool MAY produce SARIF output. When it does:
+
+- Each `DiffEntry` becomes one `result`.
+- The `ruleId` is derived from the capability key: `SKL-SHELL`, `SKL-NETWORK`, `SKL-FILE-READ`, `SKL-FILE-WRITE`, `SKL-TOOLS`, `SKL-SCRIPTS`.
+- `level` maps from severity: `high → error`, `medium → warning`, `low|info → note`.
+- `physicalLocation.artifactLocation.uri` resolves to the skill's `source_path` from the current lockfile; removed skills emit results with no `locations` field.
+
+The SARIF output is a view of the same delta the markdown PR comment renders — both consume the same `Diff` produced from a baseline + current `skills.lock`.
+
+## 15. Spec maintenance
 
 Changes to this spec are tracked via Pull Requests on the [skil-lock repository](https://github.com/skills-lock/skil-lock). Material changes (breaking, deprecating, adding required fields) bump the `schema_version`.
 
 This document is intentionally short. Implementation hints, edge-case discussions, and rationale live in the reference implementation's source comments and commit history.
 
-## 15. Trademarks
+## 16. Trademarks
 
 `SkilLock` and `skil-lock` are not affiliated with or endorsed by Skil power tools (a brand owned by Chervon Group). `Claude` and `Claude Code` are trademarks of Anthropic PBC; `Codex` is a trademark of OpenAI, OpCo, LLC. Use of those names in this document is purely descriptive (nominative fair use); this spec does not imply affiliation with or endorsement by either company.

@@ -51,10 +51,10 @@ In your repo (where `.claude/skills/` or `.codex/skills/` lives):
 # 1. Install (pick one):
 
 # Option A: via go install (needs Go 1.22+)
-go install github.com/skills-lock/skil-lock/cmd/skil-lock@v0.1.0
+go install github.com/skills-lock/skil-lock/cmd/skil-lock@v0.1.1
 
 # Option B: precompiled binary (Linux amd64; see Releases for other platforms)
-curl -sL https://github.com/skills-lock/skil-lock/releases/download/v0.1.0/skil-lock_0.1.0_linux_amd64.tar.gz | tar -xz
+curl -sL https://github.com/skills-lock/skil-lock/releases/download/v0.1.1/skil-lock_0.1.1_linux_amd64.tar.gz | tar -xz
 
 # 2. Accept your current skills as the approved baseline
 skil-lock init --baseline .
@@ -77,9 +77,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: skills-lock/skil-lock-action@v0.1.0
+      - uses: skills-lock/skil-lock-action@v0.1.1
         with:
-          pin-binary: v0.1.0
+          pin-binary: v0.1.1
 ```
 
 For non-Linux, see the [releases page](https://github.com/skills-lock/skil-lock/releases) for macOS (Intel + Apple Silicon) and Windows builds.
@@ -98,6 +98,18 @@ SkilLock records the surfaces that matter for security review:
 
 A reviewer sees `added file_reads: ./.env` and immediately knows what to ask.
 
+## Compatibility
+
+| Agent / runtime | Status in v0.1 | Notes |
+|---|---|---|
+| **Claude Code** | ✅ Supported | Parses `.claude/skills/*/SKILL.md` (YAML frontmatter + Markdown + bundled scripts) |
+| **Codex** | ✅ Supported | Same `SKILL.md` format; parses `.codex/skills/*/SKILL.md` |
+| **Cursor** | 🟡 Planned | Uses a different `manifest.json` format — needs a new parser; tracking demand |
+| **Copilot Skills** | 🟡 Planned | Format still stabilising; tracking demand |
+| **Windsurf / MCP** | 🟡 Planned | Same as above — open an issue if you'd use it |
+
+Want a runtime added? Open an issue with a real `SKILL.md`-equivalent fixture from your project; that's the fastest path.
+
 ## How it compares
 
 | Tool | Style | What it pins | License |
@@ -111,6 +123,22 @@ A reviewer sees `added file_reads: ./.env` and immediately knows what to ask.
 
 If you want known-bad pattern scanning before you install a skill, use Snyk or Mondoo. If you want a *committed file* that lets reviewers see capability changes in every PR, use this.
 
+## Examples & integrations
+
+- **Live demo repo**: [`skills-lock/example-claude-code-skills`](https://github.com/skills-lock/example-claude-code-skills) shows three working Claude Code skills with a clean `skills.lock` baseline. The [`example/drift`](https://github.com/skills-lock/example-claude-code-skills/tree/example/drift) branch adds a `curl` to an unallowed host so you can see the BLOCK output on a real PR.
+- **Worked `skills.lock` file**: [SPEC.md §11](./SPEC.md#11-example) walks through a complete lockfile with multiple skills and detector outputs.
+- **JSON Schema** for editor auto-complete: [`schemas/skills.lock-v0.1.json`](./schemas/skills.lock-v0.1.json). Drop into VSCode `settings.json`:
+
+  ```jsonc
+  {
+    "yaml.schemas": {
+      "https://raw.githubusercontent.com/skills-lock/skil-lock/main/schemas/skills.lock-v0.1.json": "skills.lock"
+    }
+  }
+  ```
+
+- **Interoperability — SARIF + Code Scanning**: see the [GitHub Security tab integration](#github-security-tab-integration-sarif) section above.
+
 ## What's in v0.1
 
 - CLI: `scan`, `lock`, `init --baseline`, `list`, `diff`, `ci`
@@ -120,6 +148,31 @@ If you want known-bad pattern scanning before you install a skill, use Snyk or M
 - `.skil-lock.yaml` — policy (warn vs block, protected paths, allowed domains)
 - `.skil-lock-approvals.yaml` — override audit trail (reviewer + reason + timestamp)
 - GitHub Action with PR-comment renderer
+- **SARIF v2.1.0 output** (`--format sarif`) for GitHub Code Scanning integration — findings show up inline in the PR diff *and* in the repo's Security tab
+
+## GitHub Security tab integration (SARIF)
+
+To send capability deltas to GitHub Code Scanning so they appear in the repo's Security tab and inline in the PR diff, flip the `sarif` input on:
+
+```yaml
+name: SkilLock
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write    # required for SARIF upload
+jobs:
+  skil-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: skills-lock/skil-lock-action@v0.1.1
+        with:
+          pin-binary: v0.1.1
+          sarif: true
+```
+
+`high`-severity deltas surface as **errors**, `medium` as **warnings**, and `low`/`info` as **notes**. The PR comment is independent — both surfaces show the same data, the SARIF feed just plugs SkilLock into existing Code Scanning workflows. The CLI also exposes this directly: `skil-lock ci --format sarif > skil-lock.sarif`.
 
 ## What's NOT in v0.1 (intentionally)
 
@@ -135,9 +188,8 @@ See [`SPEC.md`](./SPEC.md) for the full file-format specification. The out-of-sc
 
 ## Project status
 
-- Phase 0–2 complete (CLI + GitHub Action shipped)
-- Currently in launch prep (Phase 3)
-- v0.1.0-rc1 available; v0.1.0 follows the public launch
+- v0.1.1 released — CLI + GitHub Action + SARIF output for Code Scanning
+- v0.1.1 release notes and earlier history on the [releases page](https://github.com/skills-lock/skil-lock/releases)
 
 ## License
 
