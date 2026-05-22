@@ -9,6 +9,8 @@ Hash pinning catches tampering. SkilLock catches *what the skill is now doing*.
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Spec: v0.1](https://img.shields.io/badge/skills.lock-v0.1-green.svg)](./SPEC.md)
 
+![SkilLock demo: pin a baseline, detect a drift, paste an approval, ci passes](./docs/demo.gif)
+
 ---
 
 ## What it actually does
