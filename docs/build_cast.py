@@ -98,8 +98,8 @@ prompt()
 type_cmd("skil-lock ci --approvals .skil-lock-approvals.yaml")
 enter()
 pass_output = (
-    f"{GREY}approved: skill=changelog-summary reviewer=max19900 reason=\"release notify ping\"{RESET}\r\n"
-    f"{GREY}approved: skill=changelog-summary reviewer=max19900 reason=\"release notify ping\"{RESET}\r\n"
+    f"{GREY}approved: skill=changelog-summary reviewer=alice reason=\"release notify ping\"{RESET}\r\n"
+    f"{GREY}approved: skill=changelog-summary reviewer=alice reason=\"release notify ping\"{RESET}\r\n"
     f"### {BOLD}SkilLock — no capability deltas{RESET}\r\n\r\n"
     "Baseline `skills.lock` matches current `<working tree>`.\r\n\r\n"
     f"{BOLD}Verdict:{RESET} {GREEN}PASS — no capability deltas{RESET}\r\n"
