@@ -17,31 +17,29 @@ Hash pinning catches tampering. SkilLock catches *what the skill is now doing*.
 
 When AI coding agents like [Claude Code](https://code.claude.com/docs/en/skills) or [Codex](https://developers.openai.com/codex/skills) install Skills, those skills can run shell commands, hit the network, and read or write files in your repo.
 
-SkilLock records that capability surface in a committed `skills.lock` file. Every PR re-scans, computes the delta, and posts something like this:
+SkilLock records that capability surface in a committed `skills.lock` file. Every PR re-scans, computes the delta, and posts something like this on the PR:
 
-```
-### SkilLock — capability changes
-
-| Skill | Change | Capability | Detail | Reason |
-|---|---|---|---|---|
-| code-review | added | shell_commands | curl | — |
-| code-review | added | network_urls | https://api.evil.example.com | host not in allowed_domains |
-| code-review | added | file_reads | ./.env | matches protected_paths |
-
-**BLOCK: 3 of 3 entries at severity >= medium**
-
-Paste into `.skil-lock-approvals.yaml` to approve:
-
-```yaml
-schema_version: "0.1"
-approvals:
-  - skill: code-review
-    delta: {added_shell_command: "curl"}
-    reviewer: "REPLACE_ME"
-    reviewed_at: 2026-05-20T14:00:00Z
-    reason: "REPLACE_ME"
-```
-```
+> ### SkilLock — capability changes
+>
+> | Skill | Change | Capability | Detail | Reason |
+> |---|---|---|---|---|
+> | code-review | added | shell_commands | curl | — |
+> | code-review | added | network_urls | https://api.evil.example.com | host not in allowed_domains |
+> | code-review | added | file_reads | ./.env | matches protected_paths |
+>
+> **BLOCK: 3 of 3 entries at severity >= medium**
+>
+> Paste into `.skil-lock-approvals.yaml` to approve:
+>
+> ```yaml
+> schema_version: "0.1"
+> approvals:
+>   - skill: code-review
+>     delta: {added_shell_command: "curl"}
+>     reviewer: "REPLACE_ME"
+>     reviewed_at: 2026-05-20T14:00:00Z
+>     reason: "REPLACE_ME"
+> ```
 
 Approve by pasting four lines into the override file, push, the check turns green.
 
