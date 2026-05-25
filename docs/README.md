@@ -34,6 +34,20 @@ agg \
 `agg` is the asciinema GIF renderer (`asciinema/agg` on GitHub). One
 static binary, no chrome / ttyd / ffmpeg required.
 
+### Also produces `demo.mp4`
+
+For video-first venues (LinkedIn, X), the same GIF is converted to MP4:
+
+```bash
+ffmpeg -y -i docs/demo.gif \
+  -movflags +faststart -pix_fmt yuv420p \
+  -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+  -c:v libx264 -preset slow -crf 23 \
+  docs/demo.mp4
+```
+
+ffmpeg is the only extra dependency for the MP4 path.
+
 ### Why scripted instead of recorded
 
 A recorded session bakes the recorder's typing speed and prompt style

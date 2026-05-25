@@ -54,7 +54,7 @@ def sleep(d: float):
 # Tape ---------------------------------------------------------------
 
 # Title banner
-emit(f"{CYAN}# SkilLock — pin approved AI skill behavior, block drift in CI{RESET}\r\n", dt=0.0)
+emit(f"{CYAN}# SkilLock - pin approved AI skill behavior, block drift in CI{RESET}\r\n", dt=0.0)
 sleep(0.7)
 emit(f"{GREY}# one skill in .claude/skills/changelog-summary/. no lockfile yet.{RESET}\r\n", dt=0.0)
 sleep(0.4)
@@ -76,13 +76,13 @@ prompt()
 type_cmd("skil-lock ci")
 enter()
 block_output = (
-    f"### {BOLD}SkilLock — capability delta{RESET}\r\n\r\n"
+    f"### {BOLD}SkilLock - capability delta{RESET}\r\n\r\n"
     "Comparing `skills.lock` (baseline) vs `<working tree>` (current).\r\n\r\n"
     "| Skill              | Capability     | Δ | Detail                                  | Reason                       |\r\n"
     "|--------------------|----------------|---|-----------------------------------------|------------------------------|\r\n"
     f"| changelog-summary  | shell_commands | {YELLOW}+{RESET} | `curl`                                  | matches require_approval     |\r\n"
     f"| changelog-summary  | network_urls   | {YELLOW}+{RESET} | https://internal.example.com/notify     | host not in allowed_domains  |\r\n\r\n"
-    f"{BOLD}Verdict:{RESET} {RED}BLOCK — 2 of 2 entries at severity >= medium{RESET}\r\n\r\n"
+    f"{BOLD}Verdict:{RESET} {RED}BLOCK: 2 of 2 entries at severity >= medium{RESET}\r\n\r\n"
     f"{GREY}To approve, paste the snippet shown by ci into .skil-lock-approvals.yaml.{RESET}\r\n"
 )
 output(block_output, lead=0.35, post=3.0)
@@ -100,9 +100,9 @@ enter()
 pass_output = (
     f"{GREY}approved: skill=changelog-summary reviewer=alice reason=\"release notify ping\"{RESET}\r\n"
     f"{GREY}approved: skill=changelog-summary reviewer=alice reason=\"release notify ping\"{RESET}\r\n"
-    f"### {BOLD}SkilLock — no capability deltas{RESET}\r\n\r\n"
+    f"### {BOLD}SkilLock - no capability deltas{RESET}\r\n\r\n"
     "Baseline `skills.lock` matches current `<working tree>`.\r\n\r\n"
-    f"{BOLD}Verdict:{RESET} {GREEN}PASS — no capability deltas{RESET}\r\n"
+    f"{BOLD}Verdict:{RESET} {GREEN}PASS: no capability deltas{RESET}\r\n"
 )
 output(pass_output, lead=0.35, post=2.5)
 
