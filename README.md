@@ -107,6 +107,25 @@ jobs:
 
 Runs on `ubuntu-*` and `macos-*` GitHub-hosted runners (amd64 + arm64). All [release assets](https://github.com/skills-lock/skil-lock/releases) are SHA-256 checksummed.
 
+## Usage
+
+Everything `skil-lock` does is one of six subcommands. Each one supports `--help` for flags.
+
+| Command | What it does | When to use it |
+|---|---|---|
+| `skil-lock init --baseline .` | Writes `skills.lock` from the current detected behavior of every skill in `.claude/skills/` and `.codex/skills/`. | Once, when you adopt SkilLock - accepts everything that exists today as approved. |
+| `skil-lock ci` | Re-scans, applies `.skil-lock.yaml` + `.skil-lock-approvals.yaml`, prints the markdown verdict, exits `0` (PASS) or `1` (BLOCK). | What the GitHub Action runs. Also run it locally before opening a PR to preview the bot comment. |
+| `skil-lock scan .` | Parses every skill, emits a JSON behavior report. No file writes. | When you want to feed SkilLock's detector output into another tool. |
+| `skil-lock lock .` | Updates `skills.lock` to match the current detected behavior. | After you've reviewed a deliberate capability change and want to bake it into the baseline. |
+| `skil-lock list .` | Prints a table (or `--json`) of every detected skill with shell / URL / path counts. | Auditing what's in a repo at a glance. |
+| `skil-lock diff old.lock new.lock` | Renders the capability delta between two lockfile snapshots. | Comparing two points in time without re-scanning the working tree. |
+
+**Approving a flagged change.** When `ci` returns BLOCK, the bot comment includes a paste-ready `.skil-lock-approvals.yaml` snippet. Copy it into that file at the repo root, fill in `reviewer` + `reason`, push - CI re-runs green for the approved deltas. The approval lives in git as an audit trail.
+
+**File-format spec.** Lockfile + policy + override file schemas, severity rules, and SARIF rule IDs are all in [SPEC.md](./SPEC.md). CC BY 4.0, self-contained, versioned at `v0.1`.
+
+**Live worked example.** [`skills-lock/example-claude-code-skills`](https://github.com/skills-lock/example-claude-code-skills) ships three skills + a `.skil-lock.yaml` + a `skills.lock`. Compare `main` against [`example/drift`](https://github.com/skills-lock/example-claude-code-skills/tree/example/drift) to see a real BLOCK with the paste-back snippet, or read [PR #1](https://github.com/skills-lock/example-claude-code-skills/pull/1) which is left OPEN as a live demo.
+
 ## Why behavior, not hash?
 
 A hash tells you *something* changed. It does not tell you *what*. When a reviewer sees `content_hash: sha256:abc → sha256:def` they have to read the entire diff to understand what's different.
