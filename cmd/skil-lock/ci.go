@@ -106,7 +106,7 @@ see.`,
 			}
 			for _, a := range expired {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-					"approval expired: skill=%s reviewer=%s expires_at=%s — delta resurfaced\n",
+					"approval expired: skill=%s reviewer=%s expires_at=%s - delta resurfaced\n",
 					a.Skill, a.Reviewer, a.ExpiresAt.UTC().Format(time.RFC3339))
 			}
 

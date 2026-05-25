@@ -182,7 +182,7 @@ func messageFor(e model.DiffEntry) string {
 	}
 	base := fmt.Sprintf("Skill %q %s %s: %s", e.Skill, verb, cap, val)
 	if e.Note != "" {
-		return base + " — " + e.Note
+		return base + " - " + e.Note
 	}
 	return base
 }

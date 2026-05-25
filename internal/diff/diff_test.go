@@ -259,9 +259,9 @@ func TestRenderMarkdown_ReasonColumnSurfacesNotes(t *testing.T) {
 	if !strings.Contains(md, "| `./.env` | matches protected_paths |") {
 		t.Errorf("note not rendered in its own column:\n%s", md)
 	}
-	// Row with no Note shows the em-dash placeholder.
-	if !strings.Contains(md, "| `scripts/run.sh` | — |") {
-		t.Errorf("missing em-dash placeholder for empty Note:\n%s", md)
+	// Row with no Note shows the hyphen placeholder.
+	if !strings.Contains(md, "| `scripts/run.sh` | - |") {
+		t.Errorf("missing hyphen placeholder for empty Note:\n%s", md)
 	}
 }
 
