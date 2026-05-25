@@ -47,25 +47,42 @@ Approve by pasting four lines into the override file, push, the check turns gree
 
 Prebuilt binaries are published for **macOS (Intel + Apple Silicon), Linux (amd64 + arm64), and Windows (amd64)** on every release. In your repo (where `.claude/skills/` or `.codex/skills/` lives):
 
+**Option A - `go install` (any platform with Go 1.22+):**
+
 ```bash
-# 1. Install (pick one):
-
-# Option A: via go install (any platform with Go 1.22+)
 go install github.com/skills-lock/skil-lock/cmd/skil-lock@v0.1.2
+```
 
-# Option B: precompiled binary
-# macOS / Linux (auto-detects arch):
+The binary lands in `$(go env GOPATH)/bin` (typically `~/go/bin`). If `skil-lock: command not found`, that directory is not on your `PATH`. Add it:
+
+```bash
+export PATH="$(go env GOPATH)/bin:$PATH"   # add to ~/.bashrc or ~/.zshrc to persist
+```
+
+**Option B - prebuilt binary (no Go needed):**
+
+macOS / Linux (auto-detects arch):
+
+```bash
 OS=$(uname -s | tr A-Z a-z)
 ARCH=$(uname -m | sed s/x86_64/amd64/ | sed s/aarch64/arm64/)
 curl -sL https://github.com/skills-lock/skil-lock/releases/download/v0.1.2/skil-lock_0.1.2_${OS}_${ARCH}.tar.gz | tar -xz
+sudo mv skil-lock /usr/local/bin/   # or any dir on your PATH
+```
 
-# Windows (PowerShell or browser): download
-#   https://github.com/skills-lock/skil-lock/releases/download/v0.1.2/skil-lock_0.1.2_windows_amd64.zip
+Windows (PowerShell):
 
-# 2. Accept your current skills as the approved baseline
-skil-lock init --baseline .
+```powershell
+$url  = "https://github.com/skills-lock/skil-lock/releases/download/v0.1.2/skil-lock_0.1.2_windows_amd64.zip"
+Invoke-WebRequest -Uri $url -OutFile skil-lock.zip
+Expand-Archive skil-lock.zip -DestinationPath .
+.\skil-lock.exe version
+```
 
-# 3. Commit the lockfile
+**Then, in your repo:**
+
+```bash
+skil-lock init --baseline .          # writes skills.lock
 git add skills.lock
 git commit -m "Pin approved AI Skill behavior"
 ```
