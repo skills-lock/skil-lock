@@ -268,11 +268,11 @@ func changeOrder(c model.ChangeType) int {
 // pure formatting.
 func RenderMarkdown(d model.Diff, verdict string) string {
 	if len(d.Entries) == 0 {
-		return fmt.Sprintf("### SkilLock — no capability deltas\n\nBaseline `%s` matches current `%s`.\n",
+		return fmt.Sprintf("### SkilLock - no capability deltas\n\nBaseline `%s` matches current `%s`.\n",
 			d.BaselinePath, d.CurrentPath)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "### SkilLock — capability delta\n\n")
+	fmt.Fprintf(&b, "### SkilLock - capability delta\n\n")
 	fmt.Fprintf(&b, "Comparing `%s` (baseline) vs `%s` (current).\n\n", d.BaselinePath, d.CurrentPath)
 	fmt.Fprintf(&b, "| Skill | Capability | Change | Detail | Reason |\n")
 	fmt.Fprintf(&b, "|---|---|---|---|---|\n")
@@ -301,12 +301,12 @@ func renderDetail(e model.DiffEntry) string {
 	return e.Value
 }
 
-// renderReason surfaces DiffEntry.Note in its own column. An em-dash keeps
+// renderReason surfaces DiffEntry.Note in its own column. A hyphen keeps
 // the table visually balanced when no rule fired (better than an empty
 // cell, which some markdown renderers collapse).
 func renderReason(e model.DiffEntry) string {
 	if e.Note == "" {
-		return "—"
+		return "-"
 	}
 	return e.Note
 }
