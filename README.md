@@ -1,10 +1,12 @@
 # SkilLock
 
-**Lock the *behavior* of your AI Skills. See exactly what changed in every Pull Request.**
+**`package-lock` + Dependabot + PR security review - for your AI Skills.**
 
-`skil-lock` pins the capability surface - shell commands, network URLs, file paths - of every Claude Code and Codex Skill in your repository. On every PR, a GitHub Action posts a comment showing **what changed**.
+An AI Skill is just a Markdown file your agent reads and acts on. Nothing stops one from quietly gaining a `curl ... | bash` or an `.env` read inside an innocent-looking docs PR - and in a 200-line diff, no human reviewer catches it.
 
-Hash pinning catches tampering. SkilLock catches *what the skill is now doing*.
+`skil-lock` pins the *capability surface* - the shell commands, network hosts, and file paths each Claude Code and Codex Skill can touch - into a committed `skills.lock`. On every PR, a GitHub Action posts a comment showing exactly what behavior changed, and blocks drift until a human approves it.
+
+Hash pinning tells you *something* changed. SkilLock tells you *what the skill is now doing*.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Spec: v0.1](https://img.shields.io/badge/skills.lock-v0.1-green.svg)](./SPEC.md)
