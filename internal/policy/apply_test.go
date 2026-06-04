@@ -137,6 +137,35 @@ func TestApply_ProtectedPathsLiteral(t *testing.T) {
 	}
 }
 
+func TestApply_ProtectedPathsNormalizesDotSlashPrefix(t *testing.T) {
+	// Regression for #11: a detected read of "./.env" must match the
+	// policy entry ".env" — the literal "./" prefix used to defeat the
+	// doublestar match and silently skip the severity lift.
+	d := newDiff(model.DiffEntry{
+		Skill: "x", Capability: "file_reads", Change: model.ChangeAdded,
+		Value: "./.env", Severity: model.SeverityLow,
+	})
+	pol := model.Policy{ProtectedPaths: []string{".env"}}
+	Apply(d, pol)
+	if d.Entries[0].Severity != model.SeverityHigh {
+		t.Fatalf("./.env should match protected .env; got %q", d.Entries[0].Severity)
+	}
+}
+
+func TestApply_ProtectedPathsNormalizesGlobPrefix(t *testing.T) {
+	// Symmetric case: a "./secrets/**" policy entry must match a plain
+	// "secrets/foo.pem" detected read.
+	d := newDiff(model.DiffEntry{
+		Skill: "x", Capability: "file_reads", Change: model.ChangeAdded,
+		Value: "secrets/foo.pem", Severity: model.SeverityLow,
+	})
+	pol := model.Policy{ProtectedPaths: []string{"./secrets/**"}}
+	Apply(d, pol)
+	if d.Entries[0].Severity != model.SeverityHigh {
+		t.Fatalf("./secrets/** should match secrets/foo.pem; got %q", d.Entries[0].Severity)
+	}
+}
+
 func TestApply_ProtectedPathsIgnoresNonFileCapabilities(t *testing.T) {
 	d := newDiff(model.DiffEntry{
 		Skill: "x", Capability: "shell_commands", Change: model.ChangeAdded,

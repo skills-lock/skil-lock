@@ -29,6 +29,21 @@ func TestDetect_PicksUpUrlsAcrossSources(t *testing.T) {
 	}
 }
 
+func TestDetect_UrlOnContinuationLine(t *testing.T) {
+	// Regression guard for #12: the trailing URL of a multi-line curl
+	// must still be extracted.
+	p := claude.ParsedSkill{
+		CodeBlocks: []claude.CodeBlock{
+			{Language: "bash", Content: "curl -X POST \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"event\":\"ship\"}' \\\n  https://api.example.com/notify\n"},
+		},
+	}
+	got := Detect(p)
+	want := []string{"https://api.example.com/notify"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("want %v, got %v", want, got)
+	}
+}
+
 func TestDetect_StripsTrailingPunctuation(t *testing.T) {
 	p := claude.ParsedSkill{
 		Body: "Look here: https://api.example.com/v1/posts. End.",

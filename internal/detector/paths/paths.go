@@ -27,6 +27,14 @@ import (
 // they have no separator and no glob marker.
 var pathLike = regexp.MustCompile(`(?:\.{1,2}/|/)[A-Za-z0-9._*?/\-]+|[A-Za-z0-9._-]+\.[A-Za-z0-9]+|\*\*?/[A-Za-z0-9._*?/\-]+|[A-Za-z0-9._-]*\*[A-Za-z0-9._*?/\-]*`)
 
+// dotfileLike matches a leading-dot config/secret filename with no path
+// separator, such as ".env", ".env.local", ".npmrc", ".netrc". These are
+// the highest-value secret targets in malicious skills, yet they have no
+// extension and look like flags or hidden-dir noise, so the general
+// pathLike regex misses them. "." and ".." (current/parent dir) are
+// excluded by requiring a letter immediately after the dot.
+var dotfileLike = regexp.MustCompile(`^\.[A-Za-z][A-Za-z0-9._-]*$`)
+
 // readOnlyCmds: arguments after the verb are likely reads.
 var readOnlyCmds = map[string]struct{}{
 	"cat": {}, "grep": {}, "egrep": {}, "fgrep": {}, "head": {}, "tail": {},
@@ -235,6 +243,22 @@ func looksLikePath(s string) bool {
 	}
 	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
 		return false
+	}
+	// A whitespace-carrying token with no leading path marker is almost
+	// never a real path here — far more likely a quoted HTTP header value
+	// ("Content-Type: application/json") or message that happens to hold a
+	// slash. Genuine quoted paths with spaces still start with "/", "./"
+	// or "." so they are preserved.
+	if strings.ContainsAny(s, " \t") &&
+		!strings.HasPrefix(s, "/") && !strings.HasPrefix(s, ".") {
+		return false
+	}
+	// Dot-prefixed config/secret files (.env, .npmrc, .netrc) have no
+	// path separator and no recognised extension, so accept them before
+	// the general path heuristic would reject them. Dotfiles with a
+	// separator (.aws/credentials) already match pathLike via the slash.
+	if dotfileLike.MatchString(s) {
+		return true
 	}
 	if !pathLike.MatchString(s) {
 		return false
