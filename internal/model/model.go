@@ -38,24 +38,42 @@ type Behavior struct {
 
 // LockEntry is one skill's row in skills.lock. Fields are declared in the
 // canonical on-disk order (runtime → source_path → version → content_hash →
-// behavior); Name is not a field because the surrounding map key carries it.
+// behavior → script_hashes); Name is not a field because the surrounding map
+// key carries it.
+//
+// ScriptHashes maps each bundled script's forward-slash path (the same
+// strings that appear in Behavior.BundledScripts) to the SHA-256 of that
+// file's raw bytes (`sha256:` + 64 hex). It closes the integrity gap where
+// content_hash covers SKILL.md only: without per-script digests a bundled
+// script body could be rewritten end-to-end and the lockfile would not move,
+// so a reviewer sees a clean diff and approves a changed payload. The field
+// is optional (omitempty) so skills that ship no scripts add no noise and
+// older 0.1 lockfiles without it still load; the CLI emits it by default
+// whenever a skill has bundled scripts.
 type LockEntry struct {
-	Runtime     Runtime  `yaml:"runtime"`
-	SourcePath  string   `yaml:"source_path"`
-	Version     string   `yaml:"version"`
-	ContentHash string   `yaml:"content_hash"`
-	Behavior    Behavior `yaml:"behavior"`
+	Runtime      Runtime           `yaml:"runtime"`
+	SourcePath   string            `yaml:"source_path"`
+	Version      string            `yaml:"version"`
+	ContentHash  string            `yaml:"content_hash"`
+	Behavior     Behavior          `yaml:"behavior"`
+	ScriptHashes map[string]string `yaml:"script_hashes,omitempty"`
 }
 
 // NewLockEntry builds an entry from an Identity (parser output) + the
-// content hash + behavior. Drops Identity.Name — it becomes the map key.
-func NewLockEntry(id Identity, contentHash string, b Behavior) LockEntry {
+// content hash + behavior + per-script content digests. Drops Identity.Name —
+// it becomes the map key. An empty scriptHashes map is dropped so the field
+// is omitted for skills with no bundled scripts.
+func NewLockEntry(id Identity, contentHash string, b Behavior, scriptHashes map[string]string) LockEntry {
+	if len(scriptHashes) == 0 {
+		scriptHashes = nil
+	}
 	return LockEntry{
-		Runtime:     id.Runtime,
-		SourcePath:  id.SourcePath,
-		Version:     id.Version,
-		ContentHash: contentHash,
-		Behavior:    b,
+		Runtime:      id.Runtime,
+		SourcePath:   id.SourcePath,
+		Version:      id.Version,
+		ContentHash:  contentHash,
+		Behavior:     b,
+		ScriptHashes: scriptHashes,
 	}
 }
 

@@ -44,6 +44,8 @@ skills:
         - Write
       bundled_scripts:
         - scripts/extract.sh
+    script_hashes:
+      scripts/extract.sh: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
   release-notes:
     runtime: codex
     source_path: .codex/skills/release-notes/SKILL.md

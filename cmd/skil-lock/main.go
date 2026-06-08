@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -18,6 +19,13 @@ var (
 
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
+		// errBlocking is the expected mode=block exit; the ci command already
+		// printed the BLOCK verdict, so don't repeat it. Any other error
+		// (bad policy file, missing lockfile, scan failure) would otherwise
+		// exit 1 with no output at all — surface it so failures are debuggable.
+		if !errors.Is(err, errBlocking) {
+			fmt.Fprintln(os.Stderr, "error:", err)
+		}
 		os.Exit(1)
 	}
 }

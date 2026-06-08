@@ -126,6 +126,17 @@ see.`,
 			}
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), verdict)
 
+			// A skill that fails to parse is not analysable, so its capability
+			// surface is unknown. In block mode that is itself a failure: a
+			// planted parse error (e.g. a malformed SKILL.md) would otherwise
+			// drop the skill from the scan and read as a benign removal,
+			// passing CI while a sibling script was rewritten. Refuse to pass.
+			if pol.Mode == model.PolicyModeBlock && len(rep.Errors) > 0 {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"BLOCK: %d skill(s) failed to parse and could not be analysed\n", len(rep.Errors))
+				return errBlocking
+			}
+
 			if blocked {
 				return errBlocking
 			}

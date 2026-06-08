@@ -39,14 +39,18 @@ type Result struct {
 	Identity    model.Identity `json:"identity"`
 	Behavior    model.Behavior `json:"behavior"`
 	ContentHash string         `json:"content_hash"`
-	SourceDir   string         `json:"source_dir"` // skill's own directory (e.g. .claude/skills/x)
+	// ScriptHashes maps each bundled script path to the SHA-256 of its raw
+	// bytes. Empty when the skill ships no scripts. Carried into the
+	// LockEntry so a changed script body produces a diff.
+	ScriptHashes map[string]string `json:"script_hashes,omitempty"`
+	SourceDir    string            `json:"source_dir"` // skill's own directory (e.g. .claude/skills/x)
 }
 
 // Report is the full output of scanning a repo: every detected skill,
 // plus any parse-level errors that did not abort the whole run.
 type Report struct {
-	Skills []Result      `json:"skills"`
-	Errors []ScanError   `json:"errors,omitempty"`
+	Skills []Result    `json:"skills"`
+	Errors []ScanError `json:"errors,omitempty"`
 }
 
 // ScanError records one non-fatal failure: a single skill's SKILL.md
@@ -148,11 +152,26 @@ func build(p claude.Parsed, repoRelDir string) Result {
 	id := p.Identity
 	id.SourcePath = filepath.ToSlash(filepath.Join(repoRelDir, claude.SkillFilename))
 	return Result{
-		Identity:    id,
-		Behavior:    beh,
-		ContentHash: p.ContentHash,
-		SourceDir:   repoRelDir,
+		Identity:     id,
+		Behavior:     beh,
+		ContentHash:  p.ContentHash,
+		ScriptHashes: scriptHashes(p.Skill),
+		SourceDir:    repoRelDir,
 	}
+}
+
+// scriptHashes maps each bundled script's path to the SHA-256 of its raw
+// bytes (computed by the parser). Returns nil when the skill ships no
+// scripts so the lockfile omits the field entirely.
+func scriptHashes(p claude.ParsedSkill) map[string]string {
+	if len(p.Scripts) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(p.Scripts))
+	for _, s := range p.Scripts {
+		out[s.RelPath] = s.Sum
+	}
+	return out
 }
 
 // bundledPaths returns the script paths only — content is dropped
@@ -223,4 +242,3 @@ func Inventories(r Report) []Inventory {
 	}
 	return out
 }
-

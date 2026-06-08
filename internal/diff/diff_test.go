@@ -31,11 +31,11 @@ func TestCompare_NewSkillIsAllAdditions(t *testing.T) {
 		Version:     "1.0.0",
 		ContentHash: "sha256:aa",
 		Behavior: model.Behavior{
-			ShellCommands: []string{"git"},
-			NetworkURLs:   []string{},
-			FileReads:     []string{},
-			FileWrites:    []string{},
-			AllowedTools:  []string{"Bash"},
+			ShellCommands:  []string{"git"},
+			NetworkURLs:    []string{},
+			FileReads:      []string{},
+			FileWrites:     []string{},
+			AllowedTools:   []string{"Bash"},
 			BundledScripts: []string{},
 		},
 	}
@@ -122,6 +122,94 @@ func TestCompare_ModifiedSkill_AddAndRemove(t *testing.T) {
 	}
 	if added != 1 || removed != 1 {
 		t.Errorf("want 1 added + 1 removed; got added=%d removed=%d entries=%+v", added, removed, d.Entries)
+	}
+}
+
+func TestCompare_ScriptBodyChangeIsBlockingModified(t *testing.T) {
+	// Same path, same SKILL.md content_hash, same bundled_scripts list —
+	// only the script's body (digest) moved. This must produce a blocking
+	// (Medium) modified entry; otherwise a rewritten payload slips through
+	// behind a clean diff.
+	old := emptyLockfile()
+	old.Skills["x"] = model.LockEntry{
+		ContentHash:  "sha256:aa",
+		Behavior:     model.Behavior{BundledScripts: []string{"scripts/extract.sh"}},
+		ScriptHashes: map[string]string{"scripts/extract.sh": "sha256:1111111111111111"},
+	}
+	cur := emptyLockfile()
+	cur.Skills["x"] = model.LockEntry{
+		ContentHash:  "sha256:aa",
+		Behavior:     model.Behavior{BundledScripts: []string{"scripts/extract.sh"}},
+		ScriptHashes: map[string]string{"scripts/extract.sh": "sha256:2222222222222222"},
+	}
+	d := Compare(old, cur, "old.lock", "cur.lock")
+
+	var found bool
+	for _, e := range d.Entries {
+		if e.Capability == "bundled_scripts" && e.Change == model.ChangeModified {
+			found = true
+			// Value binds path to the NEW digest so an approval can't be replayed.
+			if e.Value != "scripts/extract.sh@sha256:2222222222222222" {
+				t.Errorf("value: want path@newdigest, got %q", e.Value)
+			}
+			if e.Severity != model.SeverityMedium {
+				t.Errorf("severity: want medium, got %q", e.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected a modified bundled_scripts entry; got %+v", d.Entries)
+	}
+	if !d.HasBlocking(model.SeverityMedium) {
+		t.Errorf("a changed script body must block at the medium threshold")
+	}
+}
+
+func TestCompare_ScriptBodyUnchangedNoEntry(t *testing.T) {
+	old := emptyLockfile()
+	old.Skills["x"] = model.LockEntry{
+		ContentHash:  "sha256:aa",
+		Behavior:     model.Behavior{BundledScripts: []string{"scripts/extract.sh"}},
+		ScriptHashes: map[string]string{"scripts/extract.sh": "sha256:abc"},
+	}
+	cur := old
+	d := Compare(old, cur, "old.lock", "cur.lock")
+	for _, e := range d.Entries {
+		if e.Capability == "bundled_scripts" && e.Change == model.ChangeModified {
+			t.Errorf("unchanged script body should not produce a modified entry: %+v", e)
+		}
+	}
+}
+
+func TestCompare_ScriptPathAddRemoveNotDoubleReported(t *testing.T) {
+	// A script path that appears/disappears must produce exactly one entry
+	// (the set-diff add/remove), never also a spurious "modified" — the
+	// body-change loop only fires for paths present in BOTH sides.
+	old := emptyLockfile()
+	old.Skills["x"] = model.LockEntry{
+		ContentHash:  "sha256:aa",
+		Behavior:     model.Behavior{BundledScripts: []string{"scripts/a.sh"}},
+		ScriptHashes: map[string]string{"scripts/a.sh": "sha256:aaaa"},
+	}
+	cur := emptyLockfile()
+	cur.Skills["x"] = model.LockEntry{
+		ContentHash:  "sha256:aa",
+		Behavior:     model.Behavior{BundledScripts: []string{"scripts/a.sh", "scripts/b.sh"}},
+		ScriptHashes: map[string]string{"scripts/a.sh": "sha256:aaaa", "scripts/b.sh": "sha256:bbbb"},
+	}
+	d := Compare(old, cur, "old.lock", "cur.lock")
+
+	var scriptEntries []model.DiffEntry
+	for _, e := range d.Entries {
+		if e.Capability == "bundled_scripts" {
+			scriptEntries = append(scriptEntries, e)
+		}
+	}
+	if len(scriptEntries) != 1 {
+		t.Fatalf("want exactly 1 bundled_scripts entry for a path add, got %d: %+v", len(scriptEntries), scriptEntries)
+	}
+	if scriptEntries[0].Change != model.ChangeAdded || scriptEntries[0].Value != "scripts/b.sh" {
+		t.Errorf("want added scripts/b.sh, got %+v", scriptEntries[0])
 	}
 }
 

@@ -229,6 +229,48 @@ jobs:
 
 `high`-severity deltas surface as **errors**, `medium` as **warnings**, and `low`/`info` as **notes**. The PR comment is independent - both surfaces show the same data, the SARIF feed just plugs SkilLock into existing Code Scanning workflows. The CLI also exposes this directly: `skil-lock ci --format sarif > skil-lock.sarif`.
 
+## Detection boundary (what is and isn't gated)
+
+A security tool that over-claims is worse than none: a clean diff then reads as
+"nothing changed" when something did. So, precisely:
+
+**What SkilLock gates.** It statically extracts the *literal* capability surface
+from each `SKILL.md` (and the code fences in it) and from bundled script files:
+
+- shell verbs, network URLs/host globs, file reads/writes, and `allowed-tools`
+  written literally in the skill;
+- bundled script **paths** and, via `script_hashes`, each script's **content
+  digest** for files under the skill's `scripts/` and `resources/` directories -
+  so a rewritten script body (e.g. `scripts/extract.sh`) produces a blocking
+  diff instead of slipping past an unchanged `content_hash`. Approvals of a
+  changed body are bound to the new digest, so a later re-edit re-blocks rather
+  than riding the old approval.
+
+That surface is pinned in `skills.lock` and every change is diffed for human
+approval per PR.
+
+**What it does NOT catch (by design, today):**
+
+- **Runtime-assembled capability.** A command, URL, or host built at runtime -
+  hidden behind a variable, `base64`, `eval`, or read from an env var or a file -
+  whose literal text never appears in the skill. The parser can't see a `curl`
+  or a hostname that isn't written down.
+- **Natural-language intent.** A skill is instructions for an LLM. "Send the
+  output to the on-call endpoint in `config.json`" adds no new shell verb and no
+  new URL, yet the agent may still act on it. SkilLock gates what the parser
+  sees, not what the model infers.
+- **Files shipped outside `scripts/` and `resources/`.** Integrity digests cover
+  those two conventional directories; a file placed elsewhere in the skill
+  directory (e.g. `bin/`) is not yet hashed. Extending coverage to every sibling
+  file is tracked for v0.2 (see [SPEC.md](./SPEC.md) §9).
+- **MCP servers** a skill calls and **cross-file `@`-references** to other skills
+  or files - real capability vectors a per-`SKILL.md` scan does not yet model
+  (tracked, not yet covered - see [SPEC.md](./SPEC.md) §9).
+
+SkilLock makes the literal capability surface reviewable and pins it against
+drift. It is not a sandbox and not a natural-language intent analyzer. Knowing
+exactly where that line sits is the point.
+
 ## What's NOT in v0.1 (intentionally)
 
 To keep the scope narrow and the positioning clean:

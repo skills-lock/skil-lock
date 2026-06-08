@@ -8,6 +8,10 @@ on:
 
 permissions:
   contents: write
+  # OIDC token for cosign keyless signing.
+  id-token: write
+  # Build provenance attestations (SLSA) for the released artifacts.
+  attestations: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -26,10 +30,24 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # cosign for keyless signing of checksums.txt (see .goreleaser.yml signs:).
+      - uses: sigstore/cosign-installer@v3
+      # syft for SBOM generation (see .goreleaser.yml sboms:).
+      - uses: anchore/sbom-action/download-syft@v0
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: latest
+          # Pin to the v2 line: 'latest' could pull a future v3 that breaks the
+          # `version: 2` config at tag time, when it is hardest to fix.
+          version: '~> v2'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # SLSA build provenance over the release artifacts produced in dist/.
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+            dist/*.sbom.json

@@ -61,7 +61,7 @@ what changed.`,
 func buildLockfile(rep scan.Report) model.Lockfile {
 	lf := model.NewLockfile(generatorString(), time.Now())
 	for _, s := range rep.Skills {
-		lf.Skills[s.Identity.Name] = model.NewLockEntry(s.Identity, s.ContentHash, s.Behavior)
+		lf.Skills[s.Identity.Name] = model.NewLockEntry(s.Identity, s.ContentHash, s.Behavior, s.ScriptHashes)
 	}
 	return lf
 }
