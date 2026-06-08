@@ -20,6 +20,21 @@ func TestDetect_FromBashCodeFence(t *testing.T) {
 	}
 }
 
+func TestDetect_HonorsLineContinuation(t *testing.T) {
+	// Regression for #12: a multi-line curl joined with `\` must yield a
+	// single "curl" command, not curl + the leaked -H / -d flags.
+	p := claude.ParsedSkill{
+		CodeBlocks: []claude.CodeBlock{
+			{Language: "bash", Content: "curl -X POST \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"event\":\"ship\"}' \\\n  https://api.example.com/notify\n"},
+		},
+	}
+	got := Detect(p)
+	want := []string{"curl"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Detect: want %v, got %v", want, got)
+	}
+}
+
 func TestDetect_FromBundledScript(t *testing.T) {
 	p := claude.ParsedSkill{
 		Scripts: []claude.Script{

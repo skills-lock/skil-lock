@@ -46,6 +46,35 @@ func TestDetect_StdinRedirectIsRead(t *testing.T) {
 	}
 }
 
+func TestDetect_DotfileSecretReadsAreSurfaced(t *testing.T) {
+	// Regression for #10: dot-prefix files without an extension (.env,
+	// .npmrc) are the top secret-exfil targets but were filtered out as
+	// flag/hidden-dir noise, leaving file_reads empty.
+	p := claude.ParsedSkill{
+		CodeBlocks: []claude.CodeBlock{
+			{Language: "bash", Content: "cat .env\ncat .npmrc\ncat .env.local\n"},
+		},
+	}
+	got := Detect(p)
+	wantReads := []string{".env", ".env.local", ".npmrc"}
+	if !reflect.DeepEqual(got.Reads, wantReads) {
+		t.Errorf("reads: want %v, got %v", wantReads, got.Reads)
+	}
+}
+
+func TestDetect_CurrentAndParentDirAreNotPaths(t *testing.T) {
+	// "." and ".." must NOT be treated as dotfile reads.
+	p := claude.ParsedSkill{
+		CodeBlocks: []claude.CodeBlock{
+			{Language: "bash", Content: "cat .\nls ..\n"},
+		},
+	}
+	got := Detect(p)
+	if len(got.Reads) != 0 {
+		t.Errorf("reads should be empty for . and ..: %v", got.Reads)
+	}
+}
+
 func TestDetect_ReadOnlyCommandArgsAreReads(t *testing.T) {
 	p := claude.ParsedSkill{
 		CodeBlocks: []claude.CodeBlock{

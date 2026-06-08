@@ -2,6 +2,7 @@ package policy
 
 import (
 	"net/url"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 
@@ -116,11 +117,17 @@ func hostFrom(rawURL string) string {
 	return u.Hostname()
 }
 
-// pathProtected reports whether path matches any glob in patterns,
-// using doublestar semantics so `**` spans directory components.
-func pathProtected(path string, patterns []string) bool {
+// pathProtected reports whether rel matches any glob in patterns, using
+// doublestar semantics so `**` spans directory components. Both sides are
+// slash-cleaned first so a detected read of "./.env" matches a policy
+// entry of ".env" (and "./secrets/**" matches "secrets/foo.pem"); without
+// this, doublestar treats the literal "./" as a real path segment and the
+// match silently fails. pathpkg.Clean is used (not filepath.Clean) so the
+// separator stays "/" regardless of host OS.
+func pathProtected(rel string, patterns []string) bool {
+	rel = pathpkg.Clean(rel)
 	for _, p := range patterns {
-		if ok, _ := doublestar.Match(p, path); ok {
+		if ok, _ := doublestar.Match(pathpkg.Clean(p), rel); ok {
 			return true
 		}
 	}

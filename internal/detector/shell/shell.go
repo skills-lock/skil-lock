@@ -132,7 +132,7 @@ func isShellScript(s claude.Script) bool {
 // variable assignments are skipped.
 func tokenize(src string) []string {
 	var out []string
-	for _, line := range strings.Split(src, "\n") {
+	for _, line := range strings.Split(joinContinuations(src), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -148,6 +148,41 @@ func tokenize(src string) []string {
 		}
 	}
 	return out
+}
+
+// joinContinuations merges POSIX backslash-newline continuations so a
+// command spread across several lines is processed as one logical line.
+// A line whose trimmed-right end is a single backslash continues onto the
+// next; a trailing "\\" (escaped backslash) is left alone. Without this,
+// multi-line `curl ... \` pipelines split their flags (-H, -d) and the
+// trailing URL into bogus separate commands.
+func joinContinuations(src string) string {
+	lines := strings.Split(src, "\n")
+	out := make([]string, 0, len(lines))
+	var pending strings.Builder
+	carrying := false
+	for _, line := range lines {
+		trimmed := strings.TrimRight(line, " \t")
+		cont := strings.HasSuffix(trimmed, `\`) && !strings.HasSuffix(trimmed, `\\`)
+		if cont {
+			pending.WriteString(strings.TrimSuffix(trimmed, `\`))
+			pending.WriteByte(' ')
+			carrying = true
+			continue
+		}
+		if carrying {
+			pending.WriteString(line)
+			out = append(out, pending.String())
+			pending.Reset()
+			carrying = false
+			continue
+		}
+		out = append(out, line)
+	}
+	if carrying {
+		out = append(out, strings.TrimRight(pending.String(), " "))
+	}
+	return strings.Join(out, "\n")
 }
 
 // splitOnSeparators splits a shell line on pipe / sequencing operators
