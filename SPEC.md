@@ -157,7 +157,8 @@ v0.1 → v0.2 will likely add: more runtimes (Cursor, Windsurf, MCP servers), ad
 
 - **MCP servers** a skill is wired to call — capability that lives outside the SKILL.md text.
 - **Cross-file includes / `@`-references** to other skills or files — capability pulled in by reference.
-- **Approval replay.** An approval keyed only to a delta value can match again if a capability is added, approved, reverted, then reintroduced later. v0.2 intends to bind an approval to the PR (or a one-time nonce) so a re-introduced delta requires fresh sign-off rather than silently matching a stale approval.
+- **Approval replay.** An approval keyed only to a delta value can match again if a capability is added, approved, reverted, then reintroduced later. v0.2 intends to bind an approval to the PR (or a one-time nonce) so a re-introduced delta requires fresh sign-off rather than silently matching a stale approval. (Note: approvals of a *modified bundled script* are already bound to the new content digest, so re-editing the body re-blocks; the general case above is the remaining gap.)
+- **Integrity coverage of sibling files.** `script_hashes` covers files under a skill's `scripts/` and `resources/` directories. Files shipped elsewhere in the skill directory (e.g. `bin/`) are not yet hashed; extending the digest to every sibling file (excluding SKILL.md, which has `content_hash`) is planned for v0.2.
 
 v0.x consumers SHOULD NOT assume forward compatibility; v1.0 introduces a stability promise.
 

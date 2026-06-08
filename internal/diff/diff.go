@@ -132,11 +132,16 @@ func diffEntry(name string, oldEntry, newEntry model.LockEntry, out *model.Diff)
 		if !existed || oldSum == newSum {
 			continue
 		}
+		// Value binds the path to the NEW digest (path@sha256:...) so an
+		// approval vouches for one specific body. Without the digest an
+		// approval keyed on the bare path would be a permanent blank cheque:
+		// approve v2, then silently ship v3 under the same approval. Encoding
+		// the digest means any later re-edit changes Value and re-blocks.
 		out.Entries = append(out.Entries, model.DiffEntry{
 			Skill:      name,
 			Capability: "bundled_scripts",
 			Change:     model.ChangeModified,
-			Value:      path,
+			Value:      path + "@" + newSum,
 			Severity:   model.SeverityMedium,
 			Note:       fmt.Sprintf("script body changed (%s -> %s)", shortHash(oldSum), shortHash(newSum)),
 		})

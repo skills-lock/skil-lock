@@ -367,6 +367,17 @@ func walkBundles(dir string) ([]Script, error) {
 			if d.IsDir() {
 				return nil
 			}
+			// Only hash regular files. Symlinks (WalkDir does not follow them,
+			// so a symlink to a directory arrives here as a non-regular entry)
+			// and other irregular files (devices, sockets) must be skipped
+			// rather than opened: os.Open would follow a dir symlink and the
+			// resulting error would abort the whole skill parse, dropping the
+			// skill from the scan — which a baseline diff then reads as a
+			// benign removal. Skipping keeps a planted symlink from masking a
+			// rewritten sibling script.
+			if !d.Type().IsRegular() {
+				return nil
+			}
 			rel, err := filepath.Rel(dir, path)
 			if err != nil {
 				return err

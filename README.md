@@ -240,8 +240,11 @@ from each `SKILL.md` (and the code fences in it) and from bundled script files:
 - shell verbs, network URLs/host globs, file reads/writes, and `allowed-tools`
   written literally in the skill;
 - bundled script **paths** and, via `script_hashes`, each script's **content
-  digest** - so a rewritten script body (e.g. `scripts/extract.sh`) produces a
-  blocking diff instead of slipping past an unchanged `content_hash`.
+  digest** for files under the skill's `scripts/` and `resources/` directories -
+  so a rewritten script body (e.g. `scripts/extract.sh`) produces a blocking
+  diff instead of slipping past an unchanged `content_hash`. Approvals of a
+  changed body are bound to the new digest, so a later re-edit re-blocks rather
+  than riding the old approval.
 
 That surface is pinned in `skills.lock` and every change is diffed for human
 approval per PR.
@@ -256,6 +259,10 @@ approval per PR.
   output to the on-call endpoint in `config.json`" adds no new shell verb and no
   new URL, yet the agent may still act on it. SkilLock gates what the parser
   sees, not what the model infers.
+- **Files shipped outside `scripts/` and `resources/`.** Integrity digests cover
+  those two conventional directories; a file placed elsewhere in the skill
+  directory (e.g. `bin/`) is not yet hashed. Extending coverage to every sibling
+  file is tracked for v0.2 (see [SPEC.md](./SPEC.md) §9).
 - **MCP servers** a skill calls and **cross-file `@`-references** to other skills
   or files - real capability vectors a per-`SKILL.md` scan does not yet model
   (tracked, not yet covered - see [SPEC.md](./SPEC.md) §9).
