@@ -84,6 +84,8 @@ Each value under `skills:` is a map:
     file_writes: [<string>, ...]
     allowed_tools: [<string>, ...]
     bundled_scripts: [<string>, ...]
+  script_hashes:            # optional; present when the skill ships scripts
+    <bundled-script-path>: sha256:<64 hex chars>
 ```
 
 | Field | Type | Required | Notes |
@@ -91,8 +93,9 @@ Each value under `skills:` is a map:
 | `runtime` | enum | yes | `claude` or `codex`. v0.2 may add more. |
 | `source_path` | string | yes | Forward-slash, repo-relative path to the SKILL.md file. |
 | `version` | string | optional | Free-form. Empty string when the skill's frontmatter does not declare a version. |
-| `content_hash` | string | yes | `sha256:` prefix + 64 lowercase hex chars. Hash of the SKILL.md file bytes only (bundled scripts not included in the hash). |
+| `content_hash` | string | yes | `sha256:` prefix + 64 lowercase hex chars. Hash of the SKILL.md file bytes only — see §7 for why bundled scripts are hashed separately in `script_hashes`. |
 | `behavior` | map | yes | Capability surface. All six sub-fields are required and MUST be present as lists, even when empty (`[]`). |
+| `script_hashes` | map | optional | Map of each `bundled_scripts` path to the `sha256:` digest of that file's raw bytes. Emitted by default whenever a skill ships scripts; omitted entirely otherwise. A changed digest produces a diff so a rewritten script body cannot pass behind an unchanged `content_hash`. |
 
 ### 6.1 Behavior fields
 
@@ -111,7 +114,7 @@ A tool MAY include path entries that are not literal files but pattern globs (`*
 
 ### 6.2 Field ordering
 
-Fields within each skill entry MUST appear in this order: `runtime`, `source_path`, `version`, `content_hash`, `behavior`. Within `behavior`, the order is the table above.
+Fields within each skill entry MUST appear in this order: `runtime`, `source_path`, `version`, `content_hash`, `behavior`, `script_hashes` (when present). Within `behavior`, the order is the table above. Within `script_hashes`, keys are sorted alphabetically by path.
 
 The skill map is sorted alphabetically by skill name.
 
@@ -119,7 +122,11 @@ This ordering produces stable diffs across regenerations and tool versions.
 
 ## 7. Hash
 
-`content_hash` is `sha256:` followed by the lowercase hexadecimal SHA-256 of the SKILL.md file's raw bytes — *not* the normalized contents, *not* the parsed frontmatter + body separately. Including bundled scripts in the hash would force a lockfile update on every script change and was rejected; bundled scripts are surfaced via `bundled_scripts` instead and can be hashed separately by tools that want to.
+`content_hash` is `sha256:` followed by the lowercase hexadecimal SHA-256 of the SKILL.md file's raw bytes — *not* the normalized contents, *not* the parsed frontmatter + body separately.
+
+`content_hash` deliberately covers SKILL.md only. The earlier rationale — that folding bundled scripts into one hash would force a lockfile update on every script change — was the wrong trade-off for an integrity tool: a changed executable body is exactly what review must catch. Instead, each bundled script gets its **own** digest in `script_hashes` (path -> `sha256:` of the file's full bytes, computed independently of any content-size cap the scanner applies for detection). This keeps SKILL.md churn separate from script churn while ensuring a rewritten `scripts/extract.sh` produces a visible, blocking diff rather than slipping past an unchanged `content_hash`. Emitting `script_hashes` is the default, not optional, for any skill that ships scripts.
+
+`script_hashes` is an additive field within schema `0.1`: lockfiles written before it remain valid and load unchanged, and consumers that do not understand it can ignore it.
 
 ## 8. Validation
 
@@ -145,6 +152,12 @@ A conforming tool MUST fail when it encounters:
 `schema_version` follows a major.minor numbering. A bump to the major component is a breaking change (e.g., dropped or renamed fields); a bump to the minor is additive (new optional fields, new behavior categories).
 
 v0.1 → v0.2 will likely add: more runtimes (Cursor, Windsurf, MCP servers), additional behavior categories (environment variable reads, signal handlers), and a `policy_hash` field linking a lockfile to the policy that approved it.
+
+**Tracked capability vectors not yet modeled (v0.1).** These are real surfaces a per-`SKILL.md` scan does not yet see; named here so adopters know the boundary (see also the README "Detection boundary" section):
+
+- **MCP servers** a skill is wired to call — capability that lives outside the SKILL.md text.
+- **Cross-file includes / `@`-references** to other skills or files — capability pulled in by reference.
+- **Approval replay.** An approval keyed only to a delta value can match again if a capability is added, approved, reverted, then reintroduced later. v0.2 intends to bind an approval to the PR (or a one-time nonce) so a re-introduced delta requires fresh sign-off rather than silently matching a stale approval.
 
 v0.x consumers SHOULD NOT assume forward compatibility; v1.0 introduces a stability promise.
 
@@ -192,6 +205,8 @@ skills:
         - Write
       bundled_scripts:
         - scripts/extract.sh
+    script_hashes:
+      scripts/extract.sh: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
 ```
 
 ## 12. Reference test vectors

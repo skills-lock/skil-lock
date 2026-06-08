@@ -97,7 +97,7 @@ func TestNewLockEntry_DropsNameAndPreservesRest(t *testing.T) {
 		Runtime:    RuntimeClaude,
 	}
 	b := Behavior{ShellCommands: []string{"git"}}
-	e := NewLockEntry(id, "sha256:abc", b)
+	e := NewLockEntry(id, "sha256:abc", b, map[string]string{"scripts/x.sh": "sha256:def"})
 
 	if e.Runtime != RuntimeClaude {
 		t.Errorf("Runtime: want %q, got %q", RuntimeClaude, e.Runtime)
@@ -113,6 +113,19 @@ func TestNewLockEntry_DropsNameAndPreservesRest(t *testing.T) {
 	}
 	if len(e.Behavior.ShellCommands) != 1 || e.Behavior.ShellCommands[0] != "git" {
 		t.Errorf("Behavior not preserved: %+v", e.Behavior)
+	}
+	if e.ScriptHashes["scripts/x.sh"] != "sha256:def" {
+		t.Errorf("ScriptHashes not preserved: %+v", e.ScriptHashes)
+	}
+}
+
+func TestNewLockEntry_EmptyScriptHashesDropped(t *testing.T) {
+	id := Identity{Name: "x", Runtime: RuntimeClaude}
+	if e := NewLockEntry(id, "sha256:abc", Behavior{}, map[string]string{}); e.ScriptHashes != nil {
+		t.Errorf("empty script hashes should be dropped to nil, got %+v", e.ScriptHashes)
+	}
+	if e := NewLockEntry(id, "sha256:abc", Behavior{}, nil); e.ScriptHashes != nil {
+		t.Errorf("nil script hashes should stay nil, got %+v", e.ScriptHashes)
 	}
 }
 

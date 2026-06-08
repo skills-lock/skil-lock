@@ -54,6 +54,14 @@
         },
         "behavior": {
           "$ref": "#/$defs/behavior"
+        },
+        "script_hashes": {
+          "type": "object",
+          "description": "Optional map of bundled-script path -> SHA-256 of that file's raw bytes. Emitted by default whenever a skill ships scripts; closes the gap where content_hash covers SKILL.md only, so a rewritten script body trips the diff. Omitted for skills with no bundled scripts.",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
         }
       }
     },

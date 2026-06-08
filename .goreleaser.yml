@@ -45,6 +45,28 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+# Software Bill of Materials, one per archive. Requires syft on the runner
+# (the release workflow installs it).
+sboms:
+  - artifacts: archive
+
+# Keyless cosign signature over checksums.txt. Because checksums.txt already
+# covers every artifact, signing it transitively authenticates them all.
+# Produces checksums.txt.sig + checksums.txt.pem next to the manifest.
+# Requires `id-token: write` in the release workflow (OIDC) and cosign on the
+# runner; see SECURITY.md for the verification command.
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 

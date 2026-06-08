@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -56,9 +57,16 @@ type CodeBlock struct {
 
 // Script is one bundled file under <skill-dir>/scripts/ or
 // <skill-dir>/resources/. RelPath is relative to the skill directory.
+//
+// Content is capped at MaxScriptBytes (empty for larger files) because it
+// only feeds the detectors. Sum is the SHA-256 of the file's FULL bytes
+// (`sha256:` + 64 hex), computed independently of the cap so the integrity
+// digest in skills.lock is always correct even for large assets — a capped
+// Content must never weaken tamper detection.
 type Script struct {
 	RelPath string
 	Content string
+	Sum     string
 }
 
 // ParsedSkill is the parser-local raw textual surface. Detectors mine
@@ -368,7 +376,11 @@ func walkBundles(dir string) ([]Script, error) {
 			if err != nil {
 				return err
 			}
-			scripts = append(scripts, Script{RelPath: rel, Content: content})
+			sum, err := hashFile(path)
+			if err != nil {
+				return err
+			}
+			scripts = append(scripts, Script{RelPath: rel, Content: content, Sum: sum})
 			return nil
 		})
 		if err != nil {
@@ -377,6 +389,23 @@ func walkBundles(dir string) ([]Script, error) {
 	}
 	sort.Slice(scripts, func(i, j int) bool { return scripts[i].RelPath < scripts[j].RelPath })
 	return scripts, nil
+}
+
+// hashFile streams the full bytes of path through SHA-256 and returns
+// `sha256:` + lowercase hex. Streaming (rather than ReadFile) keeps memory
+// bounded even for assets larger than MaxScriptBytes, so the integrity
+// digest is correct regardless of the detector content cap.
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("hash %s: %w", path, err)
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // readCapped reads up to MaxScriptBytes from path; if the file is

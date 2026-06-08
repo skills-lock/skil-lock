@@ -120,6 +120,28 @@ func diffEntry(name string, oldEntry, newEntry model.LockEntry, out *model.Diff)
 		}
 	}
 
+	// Bundled-script body changes. A script whose path is unchanged but
+	// whose content digest moved is the highest-value evasion: content_hash
+	// covers SKILL.md only, so without this check a rewritten payload (e.g.
+	// scripts/extract.sh) leaves a clean diff and a reviewer approves a
+	// changed executable. Path add/remove is already covered by the
+	// bundled_scripts set-diff above; here we only catch same-path body
+	// changes, as a Modified entry that blocks by default (Medium).
+	for path, newSum := range newEntry.ScriptHashes {
+		oldSum, existed := oldEntry.ScriptHashes[path]
+		if !existed || oldSum == newSum {
+			continue
+		}
+		out.Entries = append(out.Entries, model.DiffEntry{
+			Skill:      name,
+			Capability: "bundled_scripts",
+			Change:     model.ChangeModified,
+			Value:      path,
+			Severity:   model.SeverityMedium,
+			Note:       fmt.Sprintf("script body changed (%s -> %s)", shortHash(oldSum), shortHash(newSum)),
+		})
+	}
+
 	// Content hash drift without any behavior delta is informational.
 	if oldEntry.ContentHash != newEntry.ContentHash {
 		hasBehaviorDelta := false
@@ -296,9 +318,26 @@ func renderDetail(e model.DiffEntry) string {
 	case model.ChangeAdded, model.ChangeRemoved:
 		return fmt.Sprintf("`%s`", e.Value)
 	case model.ChangeModified:
+		// Some modified entries (a bundled script's body changing) carry only
+		// the identifier in Value and put the old/new digests in the Reason
+		// column; rendering an empty OldValue as "`` → `x`" looks broken.
+		if e.OldValue == "" {
+			return fmt.Sprintf("`%s`", e.Value)
+		}
 		return fmt.Sprintf("`%s` → `%s`", e.OldValue, e.Value)
 	}
 	return e.Value
+}
+
+// shortHash trims the `sha256:` prefix and returns the first 8 hex chars
+// for compact human-readable diff notes. Short or unprefixed inputs are
+// returned as-is.
+func shortHash(sum string) string {
+	h := strings.TrimPrefix(sum, "sha256:")
+	if len(h) > 8 {
+		return h[:8]
+	}
+	return h
 }
 
 // renderReason surfaces DiffEntry.Note in its own column. A hyphen keeps
@@ -335,7 +374,9 @@ func renderApprovalsSnippet(d model.Diff) string {
 	threshold := severityRank(SnippetThreshold)
 	var blocking []model.DiffEntry
 	for _, e := range d.Entries {
-		if e.Change != model.ChangeAdded {
+		// Added deltas and modified bundled-script bodies are both
+		// reviewer-approvable; removals are not (nothing new to vouch for).
+		if e.Change == model.ChangeRemoved {
 			continue
 		}
 		if severityRank(e.Severity) >= threshold {

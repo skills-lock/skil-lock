@@ -37,4 +37,27 @@ Out of scope:
 
 ## Supply Chain
 
-Released binaries are built and signed via GoReleaser in GitHub Actions from tagged commits. Verify with the published checksums on the corresponding release page.
+Releases are built by GoReleaser in GitHub Actions from tagged commits.
+
+**Integrity (all releases).** Every release publishes a `checksums.txt` manifest. After downloading an artifact, verify it matches:
+
+```sh
+sha256sum -c checksums.txt --ignore-missing
+```
+
+Note that `checksums.txt` proves the bytes match what the release published — integrity, not provenance.
+
+**Signing + provenance (from v0.2.0 onward).** Starting with the `v0.2.0` release, artifacts and the checksums manifest are signed with [cosign](https://github.com/sigstore/cosign) using keyless (OIDC) signing, and each release ships SLSA build provenance and an SBOM. Verify the checksums signature with:
+
+```sh
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature checksums.txt.sig \
+  --certificate-identity-regexp 'https://github.com/skills-lock/skil-lock/.+' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+```
+
+Releases tagged at or before `v0.1.2` provide `checksums.txt` only (no signature); this section is updated to match what each release actually ships.
+
+When pinning the GitHub Action in your own workflow, pin to a commit SHA (not a movable tag) for the same reason — the [example workflow](https://github.com/skills-lock/example-claude-code-skills/blob/main/.github/workflows/skil-lock.yml) does this.
