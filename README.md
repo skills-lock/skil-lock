@@ -81,6 +81,12 @@ Expand-Archive skil-lock.zip -DestinationPath .
 .\skil-lock.exe version
 ```
 
+**Option C - Homebrew (macOS / Linux):**
+
+```bash
+brew install skills-lock/tap/skil-lock
+```
+
 **Then, in your repo:**
 
 ```bash
