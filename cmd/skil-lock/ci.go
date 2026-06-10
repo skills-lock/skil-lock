@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -42,6 +44,7 @@ const blockingThreshold = model.SeverityMedium
 
 func newCICmd() *cobra.Command {
 	var policyPath, lockPath, approvalsPath, format string
+	var prNumber int
 	cmd := &cobra.Command{
 		Use:   "ci [path]",
 		Short: "Verify [path] against its committed skills.lock and .skil-lock.yaml.",
@@ -98,7 +101,9 @@ see.`,
 			current := buildLockfile(rep)
 			d := diff.Compare(baseline, current, lp, "<working tree>")
 
-			d, applied, expired := approvals.Filter(d, as, time.Now())
+			pr := resolvePR(prNumber)
+
+			d, applied, expired := approvals.Filter(d, as, time.Now(), pr)
 			for _, a := range applied {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 					"approved: skill=%s reviewer=%s reason=%q\n",
@@ -122,7 +127,7 @@ see.`,
 				_, _ = cmd.OutOrStdout().Write(doc)
 				_, _ = fmt.Fprintln(cmd.OutOrStdout())
 			default:
-				_, _ = fmt.Fprint(cmd.OutOrStdout(), diff.RenderMarkdown(d, verdict))
+				_, _ = fmt.Fprint(cmd.OutOrStdout(), diff.RenderMarkdownPR(d, verdict, pr))
 			}
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), verdict)
 
@@ -147,7 +152,38 @@ see.`,
 	cmd.Flags().StringVar(&lockPath, "lockfile", "", "Path to skills.lock (default: <path>/skills.lock)")
 	cmd.Flags().StringVar(&approvalsPath, "approvals", "", "Path to .skil-lock-approvals.yaml (default: <path>/.skil-lock-approvals.yaml)")
 	cmd.Flags().StringVar(&format, "format", formatMarkdown, "Output format: markdown (default; PR comment) or sarif (GitHub Code Scanning)")
+	cmd.Flags().IntVar(&prNumber, "pr", 0, "Pull-request number for PR-scoped approvals (auto-detected from GITHUB_EVENT_PATH in GitHub Actions; 0 = no PR context)")
 	return cmd
+}
+
+// resolvePR returns the pull-request number for approval scoping: the
+// --pr flag when given, otherwise the pull_request.number from the
+// GitHub Actions event payload when running inside a pull_request
+// workflow. 0 means "no PR context" — PR-scoped approvals will not
+// match. Auto-detection keeps older action.yml versions working: a
+// newer pinned binary picks up PR context without the Action passing
+// the flag.
+func resolvePR(flagVal int) int {
+	if flagVal > 0 {
+		return flagVal
+	}
+	eventPath := os.Getenv("GITHUB_EVENT_PATH")
+	if eventPath == "" {
+		return 0
+	}
+	raw, err := os.ReadFile(eventPath)
+	if err != nil {
+		return 0
+	}
+	var event struct {
+		PullRequest struct {
+			Number int `json:"number"`
+		} `json:"pull_request"`
+	}
+	if err := json.Unmarshal(raw, &event); err != nil {
+		return 0
+	}
+	return event.PullRequest.Number
 }
 
 // loadPolicy resolves the policy file path and loads it. A missing

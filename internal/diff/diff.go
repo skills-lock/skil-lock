@@ -294,6 +294,15 @@ func changeOrder(c model.ChangeType) int {
 // is responsible for deciding pass / warn / block. RenderMarkdown is
 // pure formatting.
 func RenderMarkdown(d model.Diff, verdict string) string {
+	return RenderMarkdownPR(d, verdict, 0)
+}
+
+// RenderMarkdownPR is RenderMarkdown with PR context: when pr is
+// non-zero the approvals snippet pre-fills a `pr:` line scoping each
+// approval to that pull request, making the replay-safe form the
+// path of least resistance. pr == 0 renders the standing-approval
+// snippet unchanged.
+func RenderMarkdownPR(d model.Diff, verdict string, pr int) string {
 	if len(d.Entries) == 0 {
 		return fmt.Sprintf("### SkilLock - no capability deltas\n\nBaseline `%s` matches current `%s`.\n",
 			d.BaselinePath, d.CurrentPath)
@@ -310,7 +319,7 @@ func RenderMarkdown(d model.Diff, verdict string) string {
 	if verdict != "" {
 		fmt.Fprintf(&b, "\n**Verdict:** %s\n", verdict)
 	}
-	if snippet := renderApprovalsSnippet(d); snippet != "" {
+	if snippet := renderApprovalsSnippet(d, pr); snippet != "" {
 		fmt.Fprint(&b, snippet)
 	}
 	return b.String()
@@ -375,7 +384,7 @@ func changeMarker(c model.ChangeType) string {
 // Reviewer + reason fields are placeholders the reviewer fills in;
 // reviewed_at is the current wall clock (UTC, second precision) so a
 // paste into the repo is a complete, valid record.
-func renderApprovalsSnippet(d model.Diff) string {
+func renderApprovalsSnippet(d model.Diff, pr int) string {
 	threshold := severityRank(SnippetThreshold)
 	var blocking []model.DiffEntry
 	for _, e := range d.Entries {
@@ -404,8 +413,16 @@ func renderApprovalsSnippet(d model.Diff) string {
 		fmt.Fprint(&b, "    reviewer: \"you@example.com\"\n")
 		fmt.Fprintf(&b, "    reviewed_at: %s\n", yamlString(stamp))
 		fmt.Fprint(&b, "    reason: \"<why this delta is acceptable>\"\n")
+		if pr != 0 {
+			fmt.Fprintf(&b, "    pr: %d\n", pr)
+		}
 	}
 	fmt.Fprint(&b, "```\n")
+	if pr != 0 {
+		fmt.Fprint(&b, "\nThe `pr:` line scopes each approval to this pull request, so the same delta\n")
+		fmt.Fprint(&b, "re-blocks if it is reverted and reintroduced later. To accept the change\n")
+		fmt.Fprint(&b, "permanently instead, run `skil-lock lock .` and commit the updated `skills.lock`.\n")
+	}
 	return b.String()
 }
 

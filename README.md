@@ -122,7 +122,7 @@ Everything `skil-lock` does is one of six subcommands. Each one supports `--help
 | `skil-lock list .` | Prints a table (or `--json`) of every detected skill with shell / URL / path counts. | Auditing what's in a repo at a glance. |
 | `skil-lock diff old.lock new.lock` | Renders the capability delta between two lockfile snapshots. | Comparing two points in time without re-scanning the working tree. |
 
-**Approving a flagged change.** When `ci` returns BLOCK, the bot comment includes a paste-ready `.skil-lock-approvals.yaml` snippet. Copy it into that file at the repo root, fill in `reviewer` + `reason`, push - CI re-runs green for the approved deltas. The approval lives in git as an audit trail.
+**Approving a flagged change.** When `ci` returns BLOCK, the bot comment includes a paste-ready `.skil-lock-approvals.yaml` snippet. Copy it into that file at the repo root, fill in `reviewer` + `reason`, push - CI re-runs green for the approved deltas. The approval lives in git as an audit trail. In CI the snippet pre-fills a `pr:` line scoping the approval to the current pull request, so the same delta re-blocks if it is reverted and reintroduced later; delete the line to make the approval standing, or run `skil-lock lock .` to fold the reviewed change into the baseline.
 
 **File-format spec.** Lockfile + policy + override file schemas, severity rules, and SARIF rule IDs are all in [SPEC.md](./SPEC.md). CC BY 4.0, self-contained, versioned at `v0.1`.
 
@@ -239,10 +239,11 @@ from each `SKILL.md` (and the code fences in it) and from bundled script files:
 
 - shell verbs, network URLs/host globs, file reads/writes, and `allowed-tools`
   written literally in the skill;
-- bundled script **paths** and, via `script_hashes`, each script's **content
-  digest** for files under the skill's `scripts/` and `resources/` directories -
-  so a rewritten script body (e.g. `scripts/extract.sh`) produces a blocking
-  diff instead of slipping past an unchanged `content_hash`. Approvals of a
+- bundled file **paths** and, via `script_hashes`, each file's **content
+  digest** - covering every regular file the skill ships anywhere under its
+  directory (`scripts/`, `resources/`, `bin/`, top-level siblings) - so a
+  rewritten file body (e.g. `scripts/extract.sh`) produces a blocking diff
+  instead of slipping past an unchanged `content_hash`. Approvals of a
   changed body are bound to the new digest, so a later re-edit re-blocks rather
   than riding the old approval.
 
@@ -259,10 +260,6 @@ approval per PR.
   output to the on-call endpoint in `config.json`" adds no new shell verb and no
   new URL, yet the agent may still act on it. SkilLock gates what the parser
   sees, not what the model infers.
-- **Files shipped outside `scripts/` and `resources/`.** Integrity digests cover
-  those two conventional directories; a file placed elsewhere in the skill
-  directory (e.g. `bin/`) is not yet hashed. Extending coverage to every sibling
-  file is tracked for v0.2 (see [SPEC.md](./SPEC.md) §9).
 - **MCP servers** a skill calls and **cross-file `@`-references** to other skills
   or files - real capability vectors a per-`SKILL.md` scan does not yet model
   (tracked, not yet covered - see [SPEC.md](./SPEC.md) §9).

@@ -84,8 +84,8 @@ Each value under `skills:` is a map:
     file_writes: [<string>, ...]
     allowed_tools: [<string>, ...]
     bundled_scripts: [<string>, ...]
-  script_hashes:            # optional; present when the skill ships scripts
-    <bundled-script-path>: sha256:<64 hex chars>
+  script_hashes:            # optional; present when the skill ships any file besides SKILL.md
+    <bundled-file-path>: sha256:<64 hex chars>
 ```
 
 | Field | Type | Required | Notes |
@@ -95,7 +95,7 @@ Each value under `skills:` is a map:
 | `version` | string | optional | Free-form. Empty string when the skill's frontmatter does not declare a version. |
 | `content_hash` | string | yes | `sha256:` prefix + 64 lowercase hex chars. Hash of the SKILL.md file bytes only — see §7 for why bundled scripts are hashed separately in `script_hashes`. |
 | `behavior` | map | yes | Capability surface. All six sub-fields are required and MUST be present as lists, even when empty (`[]`). |
-| `script_hashes` | map | optional | Map of each `bundled_scripts` path to the `sha256:` digest of that file's raw bytes. Emitted by default whenever a skill ships scripts; omitted entirely otherwise. A changed digest produces a diff so a rewritten script body cannot pass behind an unchanged `content_hash`. |
+| `script_hashes` | map | optional | Map of each bundled file's forward-slash path to the `sha256:` digest of that file's raw bytes. Coverage is exhaustive: every regular file anywhere under the skill directory — `scripts/`, `resources/`, `bin/`, top-level siblings — except SKILL.md itself, which is covered by `content_hash`. Emitted by default whenever a skill ships any file; omitted entirely otherwise. A changed digest produces a diff so a rewritten file body cannot pass behind an unchanged `content_hash`. |
 
 ### 6.1 Behavior fields
 
@@ -124,7 +124,7 @@ This ordering produces stable diffs across regenerations and tool versions.
 
 `content_hash` is `sha256:` followed by the lowercase hexadecimal SHA-256 of the SKILL.md file's raw bytes — *not* the normalized contents, *not* the parsed frontmatter + body separately.
 
-`content_hash` deliberately covers SKILL.md only. The earlier rationale — that folding bundled scripts into one hash would force a lockfile update on every script change — was the wrong trade-off for an integrity tool: a changed executable body is exactly what review must catch. Instead, each bundled script gets its **own** digest in `script_hashes` (path -> `sha256:` of the file's full bytes, computed independently of any content-size cap the scanner applies for detection). This keeps SKILL.md churn separate from script churn while ensuring a rewritten `scripts/extract.sh` produces a visible, blocking diff rather than slipping past an unchanged `content_hash`. Emitting `script_hashes` is the default, not optional, for any skill that ships scripts.
+`content_hash` deliberately covers SKILL.md only. The earlier rationale — that folding bundled scripts into one hash would force a lockfile update on every script change — was the wrong trade-off for an integrity tool: a changed executable body is exactly what review must catch. Instead, each bundled file gets its **own** digest in `script_hashes` (path -> `sha256:` of the file's full bytes, computed independently of any content-size cap the scanner applies for detection). Coverage spans every regular file under the skill directory, not just well-known subdirectories — hashing only `scripts/` and `resources/` would let a payload move to an unhashed sibling path (e.g. `bin/`) and change there behind a clean diff. This keeps SKILL.md churn separate from bundled-file churn while ensuring a rewritten `scripts/extract.sh` produces a visible, blocking diff rather than slipping past an unchanged `content_hash`. Emitting `script_hashes` is the default, not optional, for any skill that ships files.
 
 `script_hashes` is an additive field within schema `0.1`: lockfiles written before it remain valid and load unchanged, and consumers that do not understand it can ignore it.
 
@@ -157,7 +157,7 @@ v0.1 → v0.2 will likely add: more runtimes (Cursor, Windsurf, MCP servers), ad
 
 - **MCP servers** a skill is wired to call — capability that lives outside the SKILL.md text.
 - **Cross-file includes / `@`-references** to other skills or files — capability pulled in by reference.
-- **Approval replay.** An approval keyed only to a delta value can match again if a capability is added, approved, reverted, then reintroduced later. v0.2 intends to bind an approval to the PR (or a one-time nonce) so a re-introduced delta requires fresh sign-off rather than silently matching a stale approval. (Note: approvals of a *modified bundled script* are already bound to the new content digest, so re-editing the body re-blocks; the general case above is the remaining gap.)
+- **Approval replay (closed for PR-scoped approvals).** An approval keyed only to a delta value can match again if a capability is added, approved, reverted, then reintroduced later. Approvals now accept an optional `pr:` field scoping them to one pull request; the PR-comment snippet pre-fills it in CI, so a reintroduced delta in a later PR re-blocks instead of riding the stale approval. Approvals of a *modified bundled script* are additionally bound to the new content digest. An approval written **without** `pr:` remains a standing, value-matched approval by design — teams choose that explicitly by deleting the line.
 - **Integrity coverage of sibling files.** `script_hashes` covers files under a skill's `scripts/` and `resources/` directories. Files shipped elsewhere in the skill directory (e.g. `bin/`) are not yet hashed; extending the digest to every sibling file (excluding SKILL.md, which has `content_hash`) is planned for v0.2.
 
 v0.x consumers SHOULD NOT assume forward compatibility; v1.0 introduces a stability promise.
