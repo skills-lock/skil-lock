@@ -191,7 +191,7 @@ func TestFilter_DropsMatchingDelta(t *testing.T) {
 			Reason:   "test",
 		},
 	}
-	filtered, applied, expired := Filter(d, as, time.Now())
+	filtered, applied, expired := Filter(d, as, time.Now(), 0)
 	if len(filtered.Entries) != 2 {
 		t.Errorf("want 2 entries remaining, got %d: %+v", len(filtered.Entries), filtered.Entries)
 	}
@@ -210,7 +210,7 @@ func TestFilter_DropsMatchingDelta(t *testing.T) {
 
 func TestFilter_PreservesBaselineAndCurrentPath(t *testing.T) {
 	d := makeDiff()
-	filtered, _, _ := Filter(d, nil, time.Now())
+	filtered, _, _ := Filter(d, nil, time.Now(), 0)
 	if filtered.BaselinePath != d.BaselinePath || filtered.CurrentPath != d.CurrentPath {
 		t.Errorf("Filter dropped path metadata: %+v", filtered)
 	}
@@ -226,7 +226,7 @@ func TestFilter_NoMatchKeepsEverything(t *testing.T) {
 			Reason:   "test",
 		},
 	}
-	filtered, applied, _ := Filter(d, as, time.Now())
+	filtered, applied, _ := Filter(d, as, time.Now(), 0)
 	if len(filtered.Entries) != 3 {
 		t.Errorf("non-matching approval should not drop anything: got %d entries", len(filtered.Entries))
 	}
@@ -248,7 +248,7 @@ func TestFilter_ExpiredKeepsEntryAndAnnotates(t *testing.T) {
 		},
 	}
 	now := time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC) // long past the expiry
-	filtered, applied, expired := Filter(d, as, now)
+	filtered, applied, expired := Filter(d, as, now, 0)
 	if len(filtered.Entries) != 3 {
 		t.Errorf("expired approval should NOT drop entry: %d entries", len(filtered.Entries))
 	}
@@ -292,7 +292,7 @@ func TestFilter_LiveSupersedesExpiredForSameDelta(t *testing.T) {
 		},
 	}
 	now := time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC)
-	filtered, applied, _ := Filter(d, as, now)
+	filtered, applied, _ := Filter(d, as, now, 0)
 	// curl is dropped because the renewed approval is live.
 	for _, e := range filtered.Entries {
 		if e.Value == "curl" {
@@ -318,7 +318,7 @@ func TestFilter_ApprovalReportedOncePerMatch(t *testing.T) {
 	as := []Approval{
 		{Skill: "x", Delta: map[string]string{"added_shell_command": "curl"}, Reviewer: "r", Reason: "ok"},
 	}
-	_, applied, _ := Filter(d, as, time.Now())
+	_, applied, _ := Filter(d, as, time.Now(), 0)
 	if len(applied) != 1 {
 		t.Errorf("applied should be deduplicated, got %d", len(applied))
 	}
@@ -349,11 +349,75 @@ approvals:
 				Value: "curl", Severity: model.SeverityMedium},
 		},
 	}
-	filtered, applied, _ := Filter(d, as, time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
+	filtered, applied, _ := Filter(d, as, time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC), 0)
 	if len(filtered.Entries) != 0 {
 		t.Errorf("paste-back snippet should drop the curl entry: %+v", filtered)
 	}
 	if len(applied) != 1 {
 		t.Errorf("paste-back snippet should mark the approval as applied: %+v", applied)
+	}
+}
+
+func prApproval(pr int) []Approval {
+	return []Approval{
+		{
+			Skill:    "pdf-extractor",
+			Delta:    map[string]string{"added_shell_command": "curl"},
+			Reviewer: "me",
+			Reason:   "test",
+			PR:       pr,
+		},
+	}
+}
+
+func TestFilter_PRScopedApproval_MatchesSamePR(t *testing.T) {
+	filtered, applied, _ := Filter(makeDiff(), prApproval(42), time.Now(), 42)
+	if len(filtered.Entries) != 2 {
+		t.Errorf("want 2 entries remaining, got %d: %+v", len(filtered.Entries), filtered.Entries)
+	}
+	if len(applied) != 1 {
+		t.Errorf("want 1 applied approval, got %d", len(applied))
+	}
+}
+
+func TestFilter_PRScopedApproval_RejectsOtherPR(t *testing.T) {
+	filtered, applied, _ := Filter(makeDiff(), prApproval(42), time.Now(), 99)
+	if len(filtered.Entries) != 3 {
+		t.Fatalf("want all 3 entries kept, got %d", len(filtered.Entries))
+	}
+	if len(applied) != 0 {
+		t.Errorf("approval scoped to PR 42 must not apply in PR 99")
+	}
+	var note string
+	for _, e := range filtered.Entries {
+		if e.Value == "curl" {
+			note = e.Note
+		}
+	}
+	if note != "approval scoped to PR #42" {
+		t.Errorf("resurfaced delta should explain the scope; got note %q", note)
+	}
+}
+
+func TestFilter_PRScopedApproval_RejectsNoPRContext(t *testing.T) {
+	filtered, applied, _ := Filter(makeDiff(), prApproval(42), time.Now(), 0)
+	if len(filtered.Entries) != 3 || len(applied) != 0 {
+		t.Errorf("PR-scoped approval must not match outside PR context: kept=%d applied=%d",
+			len(filtered.Entries), len(applied))
+	}
+}
+
+func TestFilter_StandingApproval_IgnoresPRContext(t *testing.T) {
+	filtered, applied, _ := Filter(makeDiff(), prApproval(0), time.Now(), 99)
+	if len(filtered.Entries) != 2 || len(applied) != 1 {
+		t.Errorf("standing approval (pr absent) must match in any PR: kept=%d applied=%d",
+			len(filtered.Entries), len(applied))
+	}
+}
+
+func TestValidate_NegativePRRejected(t *testing.T) {
+	a := prApproval(-1)[0]
+	if err := validate(a); !errors.Is(err, ErrInvalidApproval) {
+		t.Errorf("negative pr must be invalid, got %v", err)
 	}
 }

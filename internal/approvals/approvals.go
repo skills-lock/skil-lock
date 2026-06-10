@@ -55,6 +55,13 @@ var (
 
 // Approval is one row in the override file. Matches the shape produced
 // by internal/diff's copy-paste snippet.
+//
+// PR, when non-zero, scopes the approval to that pull request: it only
+// matches when `skil-lock ci` runs with the same PR number. This closes
+// the approval-replay gap — a delta that is approved, reverted, and
+// later reintroduced in a different PR re-blocks instead of silently
+// riding the stale approval. PR == 0 is a standing approval that
+// matches by value alone, as before.
 type Approval struct {
 	Skill      string            `yaml:"skill"`
 	Delta      map[string]string `yaml:"delta"`
@@ -62,6 +69,7 @@ type Approval struct {
 	ReviewedAt time.Time         `yaml:"reviewed_at"`
 	Reason     string            `yaml:"reason"`
 	ExpiresAt  *time.Time        `yaml:"expires_at,omitempty"`
+	PR         int               `yaml:"pr,omitempty"`
 }
 
 // file is the on-disk wrapper holding schema_version + the list.
@@ -139,6 +147,10 @@ func validate(a Approval) error {
 		return fmt.Errorf("%w: delta must have exactly one entry, got %d (skill=%s)",
 			ErrInvalidApproval, len(a.Delta), a.Skill)
 	}
+	if a.PR < 0 {
+		return fmt.Errorf("%w: pr must be a positive pull-request number (skill=%s)",
+			ErrInvalidApproval, a.Skill)
+	}
 	return nil
 }
 
@@ -148,14 +160,20 @@ func validate(a Approval) error {
 // entry.Skill AND approval.Delta[diff.DeltaKey(entry.Capability,
 // entry.Change)] == entry.Value (exact string compare — globs are out
 // of scope for v0.1; the snippet writes exact values and reviewers
-// paste them back unchanged).
+// paste them back unchanged) AND, when the approval carries a non-zero
+// PR, currentPR equals it. currentPR == 0 means "no PR context" (a
+// local run); PR-scoped approvals never match there — the scope is the
+// whole point, and a local re-block simply mirrors what CI on another
+// PR would say.
 //
 // Returns:
 //   - filtered: a new Diff with the same BaselinePath/CurrentPath and
 //     only the entries that were NOT dropped by a non-expired approval.
 //     Entries that match an *expired* approval are kept, with an
 //     "approval expired YYYY-MM-DD" note appended so reviewers see
-//     why a previously-approved delta resurfaced.
+//     why a previously-approved delta resurfaced. Entries whose only
+//     value-match is scoped to a different PR are kept with an
+//     "approval scoped to PR #N" note for the same reason.
 //   - applied: the subset of `as` that matched at least one entry and
 //     was not expired. Useful for stderr telemetry in cmd/skil-lock ci.
 //   - expired: the subset of `as` whose ExpiresAt is set and before
@@ -165,7 +183,7 @@ func validate(a Approval) error {
 // Approvals that match no entries (reviewer drift) are not surfaced
 // in this return — that's a Phase 4 lint candidate, not a v0.1 wedge
 // feature.
-func Filter(d model.Diff, as []Approval, now time.Time) (filtered model.Diff, applied []Approval, expired []Approval) {
+func Filter(d model.Diff, as []Approval, now time.Time, currentPR int) (filtered model.Diff, applied []Approval, expired []Approval) {
 	filtered = model.Diff{
 		BaselinePath: d.BaselinePath,
 		CurrentPath:  d.CurrentPath,
@@ -184,9 +202,21 @@ func Filter(d model.Diff, as []Approval, now time.Time) (filtered model.Diff, ap
 
 	for _, e := range d.Entries {
 		key := diff.DeltaKey(e.Capability, e.Change)
-		matchIdx, matchExpired := findMatch(e, key, as, isExpired)
+		matchIdx, matchExpired, otherPR := findMatch(e, key, as, isExpired, currentPR)
 
 		if matchIdx < 0 {
+			if otherPR != 0 {
+				// A value-match exists but it is scoped to a different PR.
+				// Surface why the delta re-blocked so the reviewer doesn't
+				// chase a phantom: the old approval served its PR and is
+				// deliberately not transferable.
+				note := fmt.Sprintf("approval scoped to PR #%d", otherPR)
+				if e.Note == "" {
+					e.Note = note
+				} else {
+					e.Note = e.Note + "; " + note
+				}
+			}
 			filtered.Entries = append(filtered.Entries, e)
 			continue
 		}
@@ -218,11 +248,14 @@ func Filter(d model.Diff, as []Approval, now time.Time) (filtered model.Diff, ap
 }
 
 // findMatch looks for the first approval whose (skill, delta key,
-// delta value) tuple matches e. Returns the index into `as` and whether
-// that approval is expired. Returns -1, false when no match is found.
-// Non-expired approvals win over expired ones when both match — a
-// renewed approval supersedes the stale one.
-func findMatch(e model.DiffEntry, key string, as []Approval, isExpired []bool) (int, bool) {
+// delta value) tuple matches e and whose PR scope (if any) covers
+// currentPR. Returns the index into `as`, whether that approval is
+// expired, and — when no in-scope match exists — the PR number of a
+// value-match scoped to a different PR (0 when none), so the caller
+// can annotate the resurfaced delta. Non-expired approvals win over
+// expired ones when both match — a renewed approval supersedes the
+// stale one.
+func findMatch(e model.DiffEntry, key string, as []Approval, isExpired []bool, currentPR int) (idx int, expired bool, otherPR int) {
 	bestExpired := -1
 	for i, a := range as {
 		if a.Skill != e.Skill {
@@ -232,15 +265,21 @@ func findMatch(e model.DiffEntry, key string, as []Approval, isExpired []bool) (
 		if !ok || v != e.Value {
 			continue
 		}
+		if a.PR != 0 && a.PR != currentPR {
+			if otherPR == 0 {
+				otherPR = a.PR
+			}
+			continue
+		}
 		if !isExpired[i] {
-			return i, false
+			return i, false, 0
 		}
 		if bestExpired < 0 {
 			bestExpired = i
 		}
 	}
 	if bestExpired >= 0 {
-		return bestExpired, true
+		return bestExpired, true, 0
 	}
-	return -1, false
+	return -1, false, otherPR
 }

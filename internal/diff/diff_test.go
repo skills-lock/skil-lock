@@ -487,3 +487,26 @@ func TestDeltaKey(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderMarkdownPR_SnippetPrefillsPRScope(t *testing.T) {
+	withFixedNow(t, time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC))
+	d := model.Diff{
+		Entries: []model.DiffEntry{
+			{Skill: "pdf-extractor", Capability: "shell_commands", Change: model.ChangeAdded,
+				Value: "curl", Severity: model.SeverityMedium},
+		},
+	}
+	md := RenderMarkdownPR(d, "BLOCK: 1 of 1 entries at severity >= medium", 42)
+	if !strings.Contains(md, "\n    pr: 42\n") {
+		t.Errorf("snippet should pre-fill pr: 42:\n%s", md)
+	}
+	if !strings.Contains(md, "scopes each approval to this pull request") {
+		t.Errorf("snippet should explain PR scoping:\n%s", md)
+	}
+
+	// Without PR context the snippet must be byte-identical to the old shape.
+	md0 := RenderMarkdown(d, "BLOCK: 1 of 1 entries at severity >= medium")
+	if strings.Contains(md0, "pr:") {
+		t.Errorf("no pr line expected without PR context:\n%s", md0)
+	}
+}

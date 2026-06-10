@@ -55,8 +55,9 @@ type CodeBlock struct {
 	Content  string // literal bytes between fences (no leading "```...")
 }
 
-// Script is one bundled file under <skill-dir>/scripts/ or
-// <skill-dir>/resources/. RelPath is relative to the skill directory.
+// Script is one bundled file shipped anywhere under the skill directory
+// (scripts/, resources/, bin/, top-level siblings — everything except
+// SKILL.md itself). RelPath is relative to the skill directory.
 //
 // Content is capped at MaxScriptBytes (empty for larger files) because it
 // only feeds the detectors. Sum is the SHA-256 of the file's FULL bytes
@@ -342,61 +343,59 @@ func joinLines(segs *text.Segments, source []byte) string {
 	return b.String()
 }
 
-// walkBundles reads scripts/ and resources/ under the skill directory.
-// Missing directories are not an error — most skills don't ship bundled
-// files. Returned entries are sorted by RelPath for deterministic
-// downstream hashing and diffs.
+// walkBundles reads every file the skill ships under its directory —
+// scripts/, resources/, bin/, top-level siblings, anything else — except
+// SKILL.md itself, which is covered by content_hash. A skill with no
+// bundled files returns an empty slice. Returned entries are sorted by
+// RelPath for deterministic downstream hashing and diffs.
+//
+// Coverage is deliberately exhaustive: hashing only well-known
+// subdirectories would let a payload move to an unhashed sibling path
+// (e.g. bin/) and change there behind a clean diff — the same class of
+// hole the scripts/ digest closed in v0.2.0.
 func walkBundles(dir string) ([]Script, error) {
-	var scripts []Script
-	for _, sub := range []string{"scripts", "resources"} {
-		root := filepath.Join(dir, sub)
-		info, err := os.Stat(root)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
-			return nil, fmt.Errorf("stat %s: %w", root, err)
+	scripts := []Script{}
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, werr error) error {
+		if werr != nil {
+			return werr
 		}
-		if !info.IsDir() {
-			continue
-		}
-		err = filepath.WalkDir(root, func(path string, d fs.DirEntry, werr error) error {
-			if werr != nil {
-				return werr
-			}
-			if d.IsDir() {
-				return nil
-			}
-			// Only hash regular files. Symlinks (WalkDir does not follow them,
-			// so a symlink to a directory arrives here as a non-regular entry)
-			// and other irregular files (devices, sockets) must be skipped
-			// rather than opened: os.Open would follow a dir symlink and the
-			// resulting error would abort the whole skill parse, dropping the
-			// skill from the scan — which a baseline diff then reads as a
-			// benign removal. Skipping keeps a planted symlink from masking a
-			// rewritten sibling script.
-			if !d.Type().IsRegular() {
-				return nil
-			}
-			rel, err := filepath.Rel(dir, path)
-			if err != nil {
-				return err
-			}
-			rel = filepath.ToSlash(rel)
-			content, err := readCapped(path)
-			if err != nil {
-				return err
-			}
-			sum, err := hashFile(path)
-			if err != nil {
-				return err
-			}
-			scripts = append(scripts, Script{RelPath: rel, Content: content, Sum: sum})
+		if d.IsDir() {
 			return nil
-		})
-		if err != nil {
-			return nil, err
 		}
+		// Only hash regular files. Symlinks (WalkDir does not follow them,
+		// so a symlink to a directory arrives here as a non-regular entry)
+		// and other irregular files (devices, sockets) must be skipped
+		// rather than opened: os.Open would follow a dir symlink and the
+		// resulting error would abort the whole skill parse, dropping the
+		// skill from the scan — which a baseline diff then reads as a
+		// benign removal. Skipping keeps a planted symlink from masking a
+		// rewritten sibling script.
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		// SKILL.md is hashed separately as content_hash; skip only the
+		// top-level one — a nested scripts/SKILL.md is just another file.
+		if rel == SkillFilename {
+			return nil
+		}
+		content, err := readCapped(path)
+		if err != nil {
+			return err
+		}
+		sum, err := hashFile(path)
+		if err != nil {
+			return err
+		}
+		scripts = append(scripts, Script{RelPath: rel, Content: content, Sum: sum})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	sort.Slice(scripts, func(i, j int) bool { return scripts[i].RelPath < scripts[j].RelPath })
 	return scripts, nil
