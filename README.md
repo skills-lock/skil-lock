@@ -17,7 +17,7 @@ Hash pinning tells you *something* changed. SkilLock tells you *what the skill i
 
 ## What it actually does
 
-When AI coding agents like [Claude Code](https://code.claude.com/docs/en/skills) or [Codex](https://developers.openai.com/codex/skills) install Skills, those skills can run shell commands, hit the network, and read or write files in your repo.
+When AI coding agents like [Claude Code](https://code.claude.com/docs/en/skills) or [Codex](https://developers.openai.com/codex/skills) install Skills, those skills can run shell commands, hit the network, and read or write files in your repo. In a [scan of 17,065 skills from public GitHub repos](./docs/ecosystem-scan-2026-06.md), 38.8% execute shell commands but only 4.0% declare it in frontmatter.
 
 SkilLock records that capability surface in a committed `skills.lock` file. Every PR re-scans, computes the delta, and posts something like this on the PR:
 
