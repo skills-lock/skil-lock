@@ -52,7 +52,7 @@ Prebuilt binaries are published for **macOS (Intel + Apple Silicon), Linux (amd6
 **Option A - `go install` (any platform with Go 1.22+):**
 
 ```bash
-go install github.com/skills-lock/skil-lock/cmd/skil-lock@v0.2.1
+go install github.com/skills-lock/skil-lock/cmd/skil-lock@v0.2.2
 ```
 
 The binary lands in `$(go env GOPATH)/bin` (typically `~/go/bin`). If `skil-lock: command not found`, that directory is not on your `PATH`. Add it:
@@ -68,14 +68,14 @@ macOS / Linux (auto-detects arch):
 ```bash
 OS=$(uname -s | tr A-Z a-z)
 ARCH=$(uname -m | sed s/x86_64/amd64/ | sed s/aarch64/arm64/)
-curl -sL https://github.com/skills-lock/skil-lock/releases/download/v0.2.1/skil-lock_0.2.1_${OS}_${ARCH}.tar.gz | tar -xz
+curl -sL https://github.com/skills-lock/skil-lock/releases/download/v0.2.2/skil-lock_0.2.2_${OS}_${ARCH}.tar.gz | tar -xz
 sudo mv skil-lock /usr/local/bin/   # or any dir on your PATH
 ```
 
 Windows (PowerShell):
 
 ```powershell
-$url  = "https://github.com/skills-lock/skil-lock/releases/download/v0.2.1/skil-lock_0.2.1_windows_amd64.zip"
+$url  = "https://github.com/skills-lock/skil-lock/releases/download/v0.2.2/skil-lock_0.2.2_windows_amd64.zip"
 Invoke-WebRequest -Uri $url -OutFile skil-lock.zip
 Expand-Archive skil-lock.zip -DestinationPath .
 .\skil-lock.exe version
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: skills-lock/skil-lock-action@v0.2.1
         with:
-          pin-binary: v0.2.1
+          pin-binary: v0.2.2
 ```
 
 Runs on `ubuntu-*` and `macos-*` GitHub-hosted runners (amd64 + arm64). All [release assets](https://github.com/skills-lock/skil-lock/releases) are SHA-256 checksummed.
@@ -229,7 +229,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: skills-lock/skil-lock-action@v0.2.1
         with:
-          pin-binary: v0.2.1
+          pin-binary: v0.2.2
           sarif: true
 ```
 
@@ -288,8 +288,8 @@ See [`SPEC.md`](./SPEC.md) for the full file-format specification. The out-of-sc
 
 ## Project status
 
-- CLI: `v0.2.1` - exhaustive sibling-file digests (every file a skill ships is hashed, not just `scripts/` and `resources/`) and PR-scoped approvals (a reverted-then-reintroduced delta re-blocks instead of riding a stale approval). v0.2.0 added per-bundled-script content digests, cosign keyless signing + SLSA provenance + SBOM on releases, and a documented detection boundary; v0.1.2 was a renderer typography fix; v0.1.1 added SARIF output + multi-platform release binaries.
-- GitHub Action: [`skil-lock-action@v0.2.1`](https://github.com/skills-lock/skil-lock-action/releases/tag/v0.2.1) - pairs with CLI v0.2.1
+- CLI: `v0.2.2` - SARIF findings now carry the OWASP Agentic Skills Top 10 (AST10) taxonomy (per-rule + per-finding AST risk IDs) so Code Scanning alerts map to AST01-AST10. v0.2.1 added exhaustive sibling-file digests (every file a skill ships is hashed, not just `scripts/` and `resources/`) and PR-scoped approvals (a reverted-then-reintroduced delta re-blocks instead of riding a stale approval). v0.2.0 added per-bundled-script content digests, cosign keyless signing + SLSA provenance + SBOM on releases, and a documented detection boundary; v0.1.2 was a renderer typography fix; v0.1.1 added SARIF output + multi-platform release binaries.
+- GitHub Action: [`skil-lock-action@v0.2.1`](https://github.com/skills-lock/skil-lock-action/releases/tag/v0.2.1) - unchanged; set `pin-binary: v0.2.2` to run the latest CLI.
 - Release notes + earlier history: [skil-lock releases](https://github.com/skills-lock/skil-lock/releases) and [skil-lock-action releases](https://github.com/skills-lock/skil-lock-action/releases)
 
 ## License
