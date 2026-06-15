@@ -234,6 +234,21 @@ This is **not** required by the spec — a conforming tool MAY produce SARIF out
 - `level` maps from severity: `high → error`, `medium → warning`, `low|info → note`.
 - `physicalLocation.artifactLocation.uri` resolves to the skill's `source_path` from the current lockfile; removed skills emit results with no `locations` field.
 
+### 14.1 OWASP AST10 taxonomy alignment
+
+The document also carries the [OWASP Agentic Skills Top 10 (AST10)](https://github.com/OWASP/www-project-agentic-skills-top-10) risk taxonomy so findings land with the AST risk ID attached in GitHub Code Scanning. AST10 publishes no separate SARIF category scheme, so the AST IDs themselves (`AST01`–`AST10`) are the category identifiers.
+
+- `runs[].taxonomies[0]` is a `toolComponent` named `OWASP-AST10` defining all ten AST taxa (`isComprehensive: true`).
+- Each rule carries `relationships` (kind `relevant`) pointing at the AST taxa it represents, and `external/owasp-ast/ast0N` tags in `properties.tags`.
+- Each `result` carries `taxa` referencing the AST risk ID(s) for its capability.
+- Every finding is a delta from an approved baseline, so all map to **AST07 (Update Drift)** plus a capability-specific risk:
+
+  | capability | AST risk(s) |
+  |---|---|
+  | `shell_commands`, `network_urls`, `file_reads`, `file_writes` | AST03 (Over-Privileged Skills), AST07 |
+  | `allowed_tools` | AST04 (Insecure Metadata), AST07 |
+  | `bundled_scripts` | AST02 (Supply Chain Compromise), AST07 |
+
 The SARIF output is a view of the same delta the markdown PR comment renders — both consume the same `Diff` produced from a baseline + current `skills.lock`.
 
 ## 15. Spec maintenance

@@ -237,6 +237,117 @@ func TestRender_RoundTripJSON(t *testing.T) {
 	}
 }
 
+func TestRender_ASTTaxonomyEmitted(t *testing.T) {
+	out, err := Render(model.Diff{}, emptyCurrent(), "0.2.2")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	var doc document
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	tx := doc.Runs[0].Taxonomies
+	if len(tx) != 1 {
+		t.Fatalf("taxonomies: want 1, got %d", len(tx))
+	}
+	if tx[0].Name != "OWASP-AST10" {
+		t.Errorf("taxonomy name: %q", tx[0].Name)
+	}
+	if !tx[0].IsComprehensive {
+		t.Errorf("AST10 taxonomy should be comprehensive")
+	}
+	if len(tx[0].Taxa) != 10 {
+		t.Fatalf("taxa: want 10, got %d", len(tx[0].Taxa))
+	}
+	for i, want := range []string{"AST01", "AST02", "AST03", "AST04", "AST05", "AST06", "AST07", "AST08", "AST09", "AST10"} {
+		if tx[0].Taxa[i].ID != want {
+			t.Errorf("taxa[%d].id = %q, want %q", i, tx[0].Taxa[i].ID, want)
+		}
+		if tx[0].Taxa[i].HelpURI == "" {
+			t.Errorf("taxon %s missing helpUri", want)
+		}
+	}
+}
+
+func TestRender_ASTForCapability(t *testing.T) {
+	cases := []struct {
+		capability string
+		want       []string
+	}{
+		{"shell_commands", []string{"AST03", "AST07"}},
+		{"network_urls", []string{"AST03", "AST07"}},
+		{"file_reads", []string{"AST03", "AST07"}},
+		{"file_writes", []string{"AST03", "AST07"}},
+		{"allowed_tools", []string{"AST04", "AST07"}},
+		{"bundled_scripts", []string{"AST02", "AST07"}},
+		{"made_up_thing", []string{"AST07"}},
+	}
+	for _, tc := range cases {
+		got := astForCapability(tc.capability)
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("astForCapability(%q) = %v, want %v", tc.capability, got, tc.want)
+		}
+	}
+}
+
+func TestRender_RulesCarryASTRelationshipsAndTags(t *testing.T) {
+	for _, r := range allRules() {
+		if len(r.Relationships) == 0 {
+			t.Errorf("rule %s has no AST relationships", r.ID)
+			continue
+		}
+		// Every rule maps to AST07 (drift) plus a capability-specific risk.
+		var sawDrift, sawTag bool
+		for _, rel := range r.Relationships {
+			if rel.Target.ToolComponent.Name != "OWASP-AST10" {
+				t.Errorf("rule %s relationship targets %q, want OWASP-AST10", r.ID, rel.Target.ToolComponent.Name)
+			}
+			if rel.Target.ID == "AST07" {
+				sawDrift = true
+			}
+		}
+		if !sawDrift {
+			t.Errorf("rule %s should reference AST07 (every delta is drift)", r.ID)
+		}
+		for _, tag := range r.Properties.Tags {
+			if strings.HasPrefix(tag, "external/owasp-ast/ast") {
+				sawTag = true
+			}
+		}
+		if !sawTag {
+			t.Errorf("rule %s missing external/owasp-ast/* tag", r.ID)
+		}
+	}
+}
+
+func TestRender_ResultsCarryASTTaxa(t *testing.T) {
+	d := model.Diff{Entries: []model.DiffEntry{{
+		Skill:      "alpha",
+		Capability: "bundled_scripts",
+		Change:     model.ChangeModified,
+		Value:      "scripts/run.sh",
+		Severity:   model.SeverityLow,
+	}}}
+	out, err := Render(d, currentWith("alpha", ".claude/skills/alpha/SKILL.md"), "0.2.2")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	var doc document
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	taxa := doc.Runs[0].Results[0].Taxa
+	if len(taxa) != 2 {
+		t.Fatalf("result taxa: want 2, got %d", len(taxa))
+	}
+	if taxa[0].ID != "AST02" || taxa[1].ID != "AST07" {
+		t.Errorf("bundled_scripts taxa = %q/%q, want AST02/AST07", taxa[0].ID, taxa[1].ID)
+	}
+	if taxa[0].ToolComponent.Name != "OWASP-AST10" {
+		t.Errorf("result taxon component: %q", taxa[0].ToolComponent.Name)
+	}
+}
+
 func TestRender_AllRulesIncludeHelpURI(t *testing.T) {
 	for _, r := range allRules() {
 		if r.HelpURI == "" {

@@ -11,6 +11,7 @@ package sarif
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/skills-lock/skil-lock/internal/model"
 )
@@ -23,6 +24,22 @@ const InformationURI = "https://github.com/skills-lock/skil-lock"
 // per-rule helpUri. Anchors land readers on the spec section that
 // defines the capability and severity rules.
 const HelpURIBase = "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md"
+
+// astTaxonomyName is the SARIF toolComponent name for the OWASP Agentic
+// Skills Top 10 (AST10) taxonomy SkilLock attaches to its findings.
+// Rule relationships and per-result taxa reference it by this name so
+// GitHub Code Scanning (and any SARIF consumer) can surface the AST risk
+// ID alongside each capability delta. This is the alignment convention
+// the AST10 maintainers asked for — the project publishes no separate
+// SARIF category scheme, so the AST IDs themselves are the categories.
+const astTaxonomyName = "OWASP-AST10"
+
+// astInformationURI is the canonical AST10 project page; astHelpURIBase
+// is the prefix for each per-risk page (ast01.md … ast10.md).
+const (
+	astInformationURI = "https://github.com/OWASP/www-project-agentic-skills-top-10"
+	astHelpURIBase    = "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/"
+)
 
 // Render returns the SARIF v2.1.0 JSON document for diff d. The
 // current lockfile is used to resolve each skill's SKILL.md path; an
@@ -42,66 +59,192 @@ func Render(d model.Diff, current model.Lockfile, version string) ([]byte, error
 					Rules:          allRules(),
 				},
 			},
-			Results: buildResults(d, current),
+			Results:    buildResults(d, current),
+			Taxonomies: []taxonomy{astTaxonomy()},
 		}},
 	}
 	return json.MarshalIndent(doc, "", "  ")
 }
 
-// allRules returns the static rule set. SkilLock's deterministic
-// detectors emit at most six kinds of capability deltas; one rule per
-// capability keeps the GitHub Security tab grouping intuitive.
-func allRules() []rule {
-	return []rule{
+// ruleDef is the static definition of one capability rule. It is keyed
+// by the model capability so the SARIF rule ID, the OWASP AST10
+// relationships, and the AST tags are all derived from one place.
+type ruleDef struct {
+	capability string
+	name       string
+	short      string
+	full       string
+	tags       []string
+}
+
+// ruleDefs is the closed set of six capability rules SkilLock's
+// deterministic detectors emit; one rule per capability keeps the GitHub
+// Security tab grouping intuitive.
+func ruleDefs() []ruleDef {
+	return []ruleDef{
 		{
-			ID:               "SKL-SHELL",
-			Name:             "ShellCommandDelta",
-			ShortDescription: msg{Text: "A skill's shell command surface changed."},
-			FullDescription:  msg{Text: "skil-lock detected an added, removed, or modified shell command in a SKILL.md fenced bash block. New shell commands are medium severity by default; protected_paths and require_approval can lift this to high."},
-			HelpURI:          HelpURIBase + "#5-detectors",
-			Properties:       ruleProperties{Tags: []string{"security", "skill-behavior", "shell"}},
+			capability: "shell_commands",
+			name:       "ShellCommandDelta",
+			short:      "A skill's shell command surface changed.",
+			full:       "skil-lock detected an added, removed, or modified shell command in a SKILL.md fenced bash block. New shell commands are medium severity by default; protected_paths and require_approval can lift this to high.",
+			tags:       []string{"security", "skill-behavior", "shell"},
 		},
 		{
-			ID:               "SKL-NETWORK",
-			Name:             "NetworkURLDelta",
-			ShortDescription: msg{Text: "A skill's outbound network surface changed."},
-			FullDescription:  msg{Text: "skil-lock detected an added, removed, or modified URL referenced by a SKILL.md. New URLs whose host is not in allowed_domains are lifted to high severity."},
-			HelpURI:          HelpURIBase + "#5-detectors",
-			Properties:       ruleProperties{Tags: []string{"security", "skill-behavior", "network"}},
+			capability: "network_urls",
+			name:       "NetworkURLDelta",
+			short:      "A skill's outbound network surface changed.",
+			full:       "skil-lock detected an added, removed, or modified URL referenced by a SKILL.md. New URLs whose host is not in allowed_domains are lifted to high severity.",
+			tags:       []string{"security", "skill-behavior", "network"},
 		},
 		{
-			ID:               "SKL-FILE-READ",
-			Name:             "FileReadDelta",
-			ShortDescription: msg{Text: "A skill's file-read surface changed."},
-			FullDescription:  msg{Text: "skil-lock detected an added, removed, or modified file path read by a SKILL.md. Paths matching protected_paths globs are lifted to high severity."},
-			HelpURI:          HelpURIBase + "#5-detectors",
-			Properties:       ruleProperties{Tags: []string{"security", "skill-behavior", "file"}},
+			capability: "file_reads",
+			name:       "FileReadDelta",
+			short:      "A skill's file-read surface changed.",
+			full:       "skil-lock detected an added, removed, or modified file path read by a SKILL.md. Paths matching protected_paths globs are lifted to high severity.",
+			tags:       []string{"security", "skill-behavior", "file"},
 		},
 		{
-			ID:               "SKL-FILE-WRITE",
-			Name:             "FileWriteDelta",
-			ShortDescription: msg{Text: "A skill's file-write surface changed."},
-			FullDescription:  msg{Text: "skil-lock detected an added, removed, or modified file path written by a SKILL.md. Paths matching protected_paths globs are lifted to high severity."},
-			HelpURI:          HelpURIBase + "#5-detectors",
-			Properties:       ruleProperties{Tags: []string{"security", "skill-behavior", "file"}},
+			capability: "file_writes",
+			name:       "FileWriteDelta",
+			short:      "A skill's file-write surface changed.",
+			full:       "skil-lock detected an added, removed, or modified file path written by a SKILL.md. Paths matching protected_paths globs are lifted to high severity.",
+			tags:       []string{"security", "skill-behavior", "file"},
 		},
 		{
-			ID:               "SKL-TOOLS",
-			Name:             "AllowedToolDelta",
-			ShortDescription: msg{Text: "A skill's declared allowed_tools surface changed."},
-			FullDescription:  msg{Text: "skil-lock detected a change to a SKILL.md frontmatter allowed_tools list. Low severity by default; metadata, not capability."},
-			HelpURI:          HelpURIBase + "#5-detectors",
-			Properties:       ruleProperties{Tags: []string{"skill-behavior", "metadata"}},
+			capability: "allowed_tools",
+			name:       "AllowedToolDelta",
+			short:      "A skill's declared allowed_tools surface changed.",
+			full:       "skil-lock detected a change to a SKILL.md frontmatter allowed_tools list. Low severity by default; metadata, not capability.",
+			tags:       []string{"skill-behavior", "metadata"},
 		},
 		{
-			ID:               "SKL-SCRIPTS",
-			Name:             "BundledScriptDelta",
-			ShortDescription: msg{Text: "A skill's bundled scripts surface changed."},
-			FullDescription:  msg{Text: "skil-lock detected an added, removed, or modified bundled script referenced by a SKILL.md. Low severity by default; review the script content separately."},
-			HelpURI:          HelpURIBase + "#5-detectors",
-			Properties:       ruleProperties{Tags: []string{"skill-behavior", "scripts"}},
+			capability: "bundled_scripts",
+			name:       "BundledScriptDelta",
+			short:      "A skill's bundled scripts surface changed.",
+			full:       "skil-lock detected an added, removed, or modified bundled script referenced by a SKILL.md. Low severity by default; review the script content separately.",
+			tags:       []string{"skill-behavior", "scripts"},
 		},
 	}
+}
+
+// allRules returns the static rule set, each carrying its OWASP AST10
+// relationships and ast tags so consumers can map a SkilLock rule to the
+// AST risk(s) it represents without reading the spec.
+func allRules() []rule {
+	defs := ruleDefs()
+	out := make([]rule, 0, len(defs))
+	for _, d := range defs {
+		tags := append(append([]string{}, d.tags...), astTags(d.capability)...)
+		out = append(out, rule{
+			ID:               ruleIDFor(d.capability),
+			Name:             d.name,
+			ShortDescription: msg{Text: d.short},
+			FullDescription:  msg{Text: d.full},
+			HelpURI:          HelpURIBase + "#5-detectors",
+			Properties:       ruleProperties{Tags: tags},
+			Relationships:    astRelationships(d.capability),
+		})
+	}
+	return out
+}
+
+// astForCapability maps a SkilLock capability key to the OWASP AST10
+// risk IDs it represents. Every finding is a delta from an approved
+// baseline, so AST07 (Update Drift) applies to all; the first ID is the
+// capability-specific risk. This mirrors SPEC §10 and the SkilLock entry
+// in the OWASP solutions.md catalog.
+func astForCapability(capability string) []string {
+	switch capability {
+	case "shell_commands", "network_urls", "file_reads", "file_writes":
+		// Observed capabilities a skill exercises beyond what it declares.
+		return []string{"AST03", "AST07"}
+	case "allowed_tools":
+		// The declared frontmatter field itself — metadata layer.
+		return []string{"AST04", "AST07"}
+	case "bundled_scripts":
+		// Tampered or added shipped scripts — supply-chain layer.
+		return []string{"AST02", "AST07"}
+	}
+	// Unknown capability: still a drift event.
+	return []string{"AST07"}
+}
+
+// astTags renders the AST IDs for a capability as GitHub-recognized
+// external taxonomy tags (e.g. "external/owasp-ast/ast03").
+func astTags(capability string) []string {
+	ids := astForCapability(capability)
+	tags := make([]string, 0, len(ids))
+	for _, id := range ids {
+		tags = append(tags, "external/owasp-ast/"+strings.ToLower(id))
+	}
+	return tags
+}
+
+// astRelationships builds the SARIF rule.relationships entries pointing
+// each rule at the AST taxa it is relevant to.
+func astRelationships(capability string) []relationship {
+	ids := astForCapability(capability)
+	rels := make([]relationship, 0, len(ids))
+	for _, id := range ids {
+		rels = append(rels, relationship{
+			Target: descriptorRef{ID: id, ToolComponent: toolComponentRef{Name: astTaxonomyName, Index: 0}},
+			Kinds:  []string{"relevant"},
+		})
+	}
+	return rels
+}
+
+// taxaRefs builds the per-result taxa references so each finding carries
+// its AST risk ID(s) directly.
+func taxaRefs(capability string) []descriptorRef {
+	ids := astForCapability(capability)
+	refs := make([]descriptorRef, 0, len(ids))
+	for _, id := range ids {
+		refs = append(refs, descriptorRef{ID: id, ToolComponent: toolComponentRef{Name: astTaxonomyName, Index: 0}})
+	}
+	return refs
+}
+
+// astTaxonomy returns the OWASP AST10 taxonomy toolComponent emitted
+// under run.taxonomies[0]. It defines all ten AST risks so the document
+// is self-describing; rules and results reference the subset SkilLock
+// addresses.
+func astTaxonomy() taxonomy {
+	return taxonomy{
+		Name:             astTaxonomyName,
+		Organization:     "OWASP",
+		ShortDescription: msg{Text: "OWASP Agentic Skills Top 10 (AST10) - the ten most critical security risks in agentic AI skills."},
+		InformationURI:   astInformationURI,
+		IsComprehensive:  true,
+		Taxa:             astTaxa(),
+	}
+}
+
+// astTaxa is the AST01-AST10 risk catalog (names per the AST10 project
+// README); helpUri points at each risk's page.
+func astTaxa() []taxon {
+	defs := []struct{ id, name string }{
+		{"AST01", "Malicious Skills"},
+		{"AST02", "Supply Chain Compromise"},
+		{"AST03", "Over-Privileged Skills"},
+		{"AST04", "Insecure Metadata"},
+		{"AST05", "Unsafe Deserialization"},
+		{"AST06", "Weak Isolation"},
+		{"AST07", "Update Drift"},
+		{"AST08", "Poor Scanning"},
+		{"AST09", "No Governance"},
+		{"AST10", "Cross-Platform Reuse"},
+	}
+	out := make([]taxon, 0, len(defs))
+	for _, d := range defs {
+		out = append(out, taxon{
+			ID:               d.id,
+			Name:             d.name,
+			ShortDescription: msg{Text: d.name},
+			HelpURI:          astHelpURIBase + strings.ToLower(d.id) + ".md",
+		})
+	}
+	return out
 }
 
 // ruleIDFor maps a capability key to its SARIF rule ID. Unknown
@@ -147,6 +290,7 @@ func buildResults(d model.Diff, current model.Lockfile) []result {
 			Severity:   string(e.Severity),
 			Note:       e.Note,
 		}
+		r.Taxa = taxaRefs(e.Capability)
 		out = append(out, r)
 	}
 	return out
@@ -212,8 +356,9 @@ type document struct {
 }
 
 type run struct {
-	Tool    tool     `json:"tool"`
-	Results []result `json:"results"`
+	Tool       tool       `json:"tool"`
+	Results    []result   `json:"results"`
+	Taxonomies []taxonomy `json:"taxonomies,omitempty"`
 }
 
 type tool struct {
@@ -234,10 +379,47 @@ type rule struct {
 	FullDescription  msg            `json:"fullDescription"`
 	HelpURI          string         `json:"helpUri"`
 	Properties       ruleProperties `json:"properties"`
+	Relationships    []relationship `json:"relationships,omitempty"`
 }
 
 type ruleProperties struct {
 	Tags []string `json:"tags"`
+}
+
+// relationship links a SkilLock rule to a taxon (an OWASP AST10 risk).
+type relationship struct {
+	Target descriptorRef `json:"target"`
+	Kinds  []string      `json:"kinds,omitempty"`
+}
+
+// descriptorRef references a reportingDescriptor (here, a taxon) in a
+// named toolComponent (the AST10 taxonomy). Reused for result.taxa.
+type descriptorRef struct {
+	ID            string           `json:"id"`
+	ToolComponent toolComponentRef `json:"toolComponent"`
+}
+
+type toolComponentRef struct {
+	Name  string `json:"name"`
+	Index int    `json:"index"`
+}
+
+// taxonomy is a SARIF toolComponent holding a set of taxa; SkilLock
+// emits one for the OWASP AST10 risk catalog.
+type taxonomy struct {
+	Name             string  `json:"name"`
+	Organization     string  `json:"organization,omitempty"`
+	ShortDescription msg     `json:"shortDescription"`
+	InformationURI   string  `json:"informationUri,omitempty"`
+	IsComprehensive  bool    `json:"isComprehensive"`
+	Taxa             []taxon `json:"taxa"`
+}
+
+type taxon struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	ShortDescription msg    `json:"shortDescription"`
+	HelpURI          string `json:"helpUri,omitempty"`
 }
 
 type result struct {
@@ -246,6 +428,7 @@ type result struct {
 	Message    msg              `json:"message"`
 	Locations  []location       `json:"locations,omitempty"`
 	Properties resultProperties `json:"properties"`
+	Taxa       []descriptorRef  `json:"taxa,omitempty"`
 }
 
 type resultProperties struct {
