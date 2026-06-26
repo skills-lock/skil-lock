@@ -47,6 +47,7 @@ const (
 // reported without a physicalLocation. version is the running CLI
 // version string ("0.1.0", "dev", etc.) emitted in driver.version.
 func Render(d model.Diff, current model.Lockfile, version string) ([]byte, error) {
+	arts, idx := buildArtifacts(d, current)
 	doc := document{
 		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/Documents/CommitteeSpecifications/2.1.0/sarif-schema-2.1.0.json",
 		Version: "2.1.0",
@@ -59,11 +60,47 @@ func Render(d model.Diff, current model.Lockfile, version string) ([]byte, error
 					Rules:          allRules(),
 				},
 			},
-			Results:    buildResults(d, current),
+			Artifacts:  arts,
+			Results:    buildResults(d, current, idx),
 			Taxonomies: []taxonomy{astTaxonomy()},
 		}},
 	}
 	return json.MarshalIndent(doc, "", "  ")
+}
+
+// buildArtifacts returns the run.artifacts[] array — one entry per distinct
+// SKILL.md referenced by a result whose skill carries a content hash in the
+// current lockfile — plus a sourcePath→index map so result locations can point
+// at each artifact. The sha-256 digest binds every finding to the exact skill
+// content it was raised against (SARIF's standard artifactLocation + hashes
+// pattern). This is what makes a drift finding self-invalidating: once a
+// finding is pinned to the content hash, it no longer applies the moment the
+// SKILL.md changes. A skill with no resolvable content hash (e.g. a removed
+// skill, absent from current) contributes no artifact.
+func buildArtifacts(d model.Diff, current model.Lockfile) ([]artifact, map[string]int) {
+	idx := map[string]int{}
+	var arts []artifact
+	for _, e := range d.Entries {
+		entry, ok := current.Skills[e.Skill]
+		if !ok || entry.SourcePath == "" || entry.ContentHash == "" {
+			continue
+		}
+		if _, seen := idx[entry.SourcePath]; seen {
+			continue
+		}
+		idx[entry.SourcePath] = len(arts)
+		arts = append(arts, artifact{
+			Location: artifactLocation{URI: entry.SourcePath},
+			Hashes:   &hashes{SHA256: normalizeSHA256(entry.ContentHash)},
+		})
+	}
+	return arts, idx
+}
+
+// normalizeSHA256 renders a lockfile content hash ("sha256:" + 64 hex) as the
+// bare lowercase 64-char hex SARIF expects under hashes["sha-256"].
+func normalizeSHA256(h string) string {
+	return strings.TrimPrefix(strings.ToLower(h), "sha256:")
 }
 
 // ruleDef is the static definition of one capability rule. It is keyed
@@ -272,7 +309,7 @@ func ruleIDFor(capability string) string {
 // buildResults converts each DiffEntry into a SARIF result. Skills are
 // resolved against the current lockfile to attach a physicalLocation;
 // removed-skill entries (no source path) report at the lockfile root.
-func buildResults(d model.Diff, current model.Lockfile) []result {
+func buildResults(d model.Diff, current model.Lockfile, idx map[string]int) []result {
 	out := make([]result, 0, len(d.Entries))
 	for _, e := range d.Entries {
 		r := result{
@@ -280,7 +317,7 @@ func buildResults(d model.Diff, current model.Lockfile) []result {
 			Level:   levelFor(e.Severity),
 			Message: msg{Text: messageFor(e)},
 		}
-		if loc := locationFor(e, current); loc != nil {
+		if loc := locationFor(e, current, idx); loc != nil {
 			r.Locations = []location{*loc}
 		}
 		r.Properties = resultProperties{
@@ -335,15 +372,17 @@ func messageFor(e model.DiffEntry) string {
 // skill in the current lockfile. SARIF paths are repo-relative and
 // forward-slash normalized; SkilLock already uses forward slashes
 // internally so no replacement is needed.
-func locationFor(e model.DiffEntry, current model.Lockfile) *location {
+func locationFor(e model.DiffEntry, current model.Lockfile, idx map[string]int) *location {
 	entry, ok := current.Skills[e.Skill]
 	if !ok || entry.SourcePath == "" {
 		return nil
 	}
+	al := artifactLocation{URI: entry.SourcePath}
+	if i, ok := idx[entry.SourcePath]; ok {
+		al.Index = &i
+	}
 	return &location{
-		PhysicalLocation: physicalLocation{
-			ArtifactLocation: artifactLocation{URI: entry.SourcePath},
-		},
+		PhysicalLocation: physicalLocation{ArtifactLocation: al},
 	}
 }
 
@@ -357,8 +396,22 @@ type document struct {
 
 type run struct {
 	Tool       tool       `json:"tool"`
+	Artifacts  []artifact `json:"artifacts,omitempty"`
 	Results    []result   `json:"results"`
 	Taxonomies []taxonomy `json:"taxonomies,omitempty"`
+}
+
+// artifact is a SARIF run.artifacts[] entry: the scanned SKILL.md identified by
+// path and SHA-256 content digest. results reference it by index.
+type artifact struct {
+	Location artifactLocation `json:"location"`
+	Hashes   *hashes          `json:"hashes,omitempty"`
+}
+
+// hashes carries the SARIF-standard content digest. SkilLock emits sha-256
+// (the lockfile content hash) so findings dedupe and bind to exact content.
+type hashes struct {
+	SHA256 string `json:"sha-256"`
 }
 
 type tool struct {
@@ -449,6 +502,10 @@ type physicalLocation struct {
 
 type artifactLocation struct {
 	URI string `json:"uri"`
+	// Index points into run.artifacts[] so a result's location resolves to the
+	// artifact carrying its sha-256 digest. Pointer so index 0 is emitted
+	// (a plain int with omitempty would drop the valid zero index).
+	Index *int `json:"index,omitempty"`
 }
 
 type msg struct {

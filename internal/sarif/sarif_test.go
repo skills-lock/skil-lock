@@ -348,6 +348,119 @@ func TestRender_ResultsCarryASTTaxa(t *testing.T) {
 	}
 }
 
+func TestNormalizeSHA256(t *testing.T) {
+	want := strings.Repeat("a", 64)
+	for _, in := range []string{
+		"sha256:" + strings.Repeat("a", 64),
+		"sha256:" + strings.Repeat("A", 64),
+		strings.Repeat("A", 64),
+	} {
+		if got := normalizeSHA256(in); got != want {
+			t.Errorf("normalizeSHA256(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRender_TargetDigestEmitted(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	d := model.Diff{Entries: []model.DiffEntry{{
+		Skill:      "alpha",
+		Capability: "shell_commands",
+		Change:     model.ChangeAdded,
+		Value:      "curl",
+		Severity:   model.SeverityMedium,
+	}}}
+	cur := model.NewLockfile("skil-lock test", time.Unix(0, 0))
+	cur.Skills["alpha"] = model.LockEntry{
+		Runtime:     model.RuntimeClaude,
+		SourcePath:  ".claude/skills/alpha/SKILL.md",
+		ContentHash: "sha256:" + digest,
+	}
+	out, err := Render(d, cur, "0.2.3")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	var doc document
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	arts := doc.Runs[0].Artifacts
+	if len(arts) != 1 {
+		t.Fatalf("artifacts: want 1, got %d", len(arts))
+	}
+	if arts[0].Location.URI != ".claude/skills/alpha/SKILL.md" {
+		t.Errorf("artifact uri: %q", arts[0].Location.URI)
+	}
+	if arts[0].Hashes == nil || arts[0].Hashes.SHA256 != digest {
+		t.Errorf("artifact sha-256: %+v", arts[0].Hashes)
+	}
+	loc := doc.Runs[0].Results[0].Locations[0].PhysicalLocation.ArtifactLocation
+	if loc.Index == nil || *loc.Index != 0 {
+		t.Errorf("result location index: %v, want 0", loc.Index)
+	}
+}
+
+func TestRender_NoDigestWithoutContentHash(t *testing.T) {
+	// A skill present in current but without a content hash (older 0.1
+	// lockfile, or a test fixture) emits a location URI but no artifact.
+	d := model.Diff{Entries: []model.DiffEntry{{
+		Skill:      "alpha",
+		Capability: "shell_commands",
+		Change:     model.ChangeAdded,
+		Value:      "curl",
+		Severity:   model.SeverityMedium,
+	}}}
+	out, err := Render(d, currentWith("alpha", ".claude/skills/alpha/SKILL.md"), "0.2.3")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	var doc document
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if len(doc.Runs[0].Artifacts) != 0 {
+		t.Errorf("no artifacts expected without content hash, got %d", len(doc.Runs[0].Artifacts))
+	}
+	loc := doc.Runs[0].Results[0].Locations[0].PhysicalLocation.ArtifactLocation
+	if loc.Index != nil {
+		t.Errorf("no artifact index expected without artifact, got %d", *loc.Index)
+	}
+	if loc.URI != ".claude/skills/alpha/SKILL.md" {
+		t.Errorf("location URI still expected: %q", loc.URI)
+	}
+}
+
+func TestRender_DigestDedupedPerSkill(t *testing.T) {
+	// Two findings on the same skill share one artifact entry.
+	d := model.Diff{Entries: []model.DiffEntry{
+		{Skill: "alpha", Capability: "shell_commands", Change: model.ChangeAdded, Value: "curl", Severity: model.SeverityMedium},
+		{Skill: "alpha", Capability: "network_urls", Change: model.ChangeAdded, Value: "https://x.example", Severity: model.SeverityHigh},
+	}}
+	cur := model.NewLockfile("skil-lock test", time.Unix(0, 0))
+	cur.Skills["alpha"] = model.LockEntry{
+		Runtime:     model.RuntimeClaude,
+		SourcePath:  ".claude/skills/alpha/SKILL.md",
+		ContentHash: "sha256:" + strings.Repeat("b", 64),
+	}
+	out, err := Render(d, cur, "0.2.3")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	var doc document
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	if len(doc.Runs[0].Artifacts) != 1 {
+		t.Errorf("artifacts: want 1 deduped, got %d", len(doc.Runs[0].Artifacts))
+	}
+	for i, r := range doc.Runs[0].Results {
+		loc := r.Locations[0].PhysicalLocation.ArtifactLocation
+		if loc.Index == nil || *loc.Index != 0 {
+			t.Errorf("result %d index: %v, want 0", i, loc.Index)
+		}
+	}
+}
+
 func TestRender_AllRulesIncludeHelpURI(t *testing.T) {
 	for _, r := range allRules() {
 		if r.HelpURI == "" {

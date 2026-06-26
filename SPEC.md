@@ -234,7 +234,17 @@ This is **not** required by the spec — a conforming tool MAY produce SARIF out
 - `level` maps from severity: `high → error`, `medium → warning`, `low|info → note`.
 - `physicalLocation.artifactLocation.uri` resolves to the skill's `source_path` from the current lockfile; removed skills emit results with no `locations` field.
 
-### 14.1 OWASP AST10 taxonomy alignment
+### 14.1 Content digest (`target.digest`)
+
+Each finding is bound to the SHA-256 content digest of the skill it was raised against, using SARIF's standard `artifacts[]` + `hashes` pattern:
+
+- `runs[].artifacts[]` holds one entry per distinct SKILL.md referenced by a result, each with `location.uri` (the `source_path`) and `hashes["sha-256"]` (bare lowercase 64-char hex, taken from the lockfile `content_hash`).
+- Each `result`'s `physicalLocation.artifactLocation.index` points into `artifacts[]` so the finding resolves to its digest.
+- A skill with no resolvable content hash (e.g. a removed skill, or an older `0.1` lockfile without `content_hash`) emits its `uri` location but contributes no artifact and no `index`.
+
+This makes a drift finding self-invalidating: because it is pinned to the content hash, it no longer applies the moment the SKILL.md changes. The field is also the digest anchor a multi-scanner SARIF envelope can dedupe on across tools.
+
+### 14.2 OWASP AST10 taxonomy alignment
 
 The document also carries the [OWASP Agentic Skills Top 10 (AST10)](https://github.com/OWASP/www-project-agentic-skills-top-10) risk taxonomy so findings land with the AST risk ID attached in GitHub Code Scanning. AST10 publishes no separate SARIF category scheme, so the AST IDs themselves (`AST01`–`AST10`) are the category identifiers.
 
