@@ -1,0 +1,21 @@
+# SkilLock policy for the drift-demo. Block mode so the gate fails CI when
+# the approved capability surface widens.
+
+mode: block
+
+# Adding any shell command requires an explicit approval entry.
+require_approval:
+  - shell_commands
+
+# Skills must not write Claude Code's own config — a hook write here is the
+# persistence step in the namespace-trust attack chain.
+protected_paths:
+  - "**/.claude/settings.json"
+  - "**/settings.json"
+  - .env
+  - "**/*.pem"
+
+# Small allowlist; a skill suddenly reaching a new host trips the rule.
+allowed_domains:
+  - api.github.com
+  - "*.githubusercontent.com"
