@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/skills-lock/skil-lock/blob/main/schemas/scan-envelope-v0.1.json",
+  "title": "Skill scan-report envelope (SARIF v2.1.0 interop profile) v0.1",
+  "description": "A thin SARIF v2.1.0 profile that any AI-skill scanner MAY emit so that reports from different tools merge deterministically on the SHA-256 content digest and stay attributable per layer. Validates the envelope-specific constraints only; it does NOT re-validate the full SARIF schema. See SPEC.md §14.3.",
+  "type": "object",
+  "required": ["version", "runs"],
+  "properties": {
+    "version": { "const": "2.1.0" },
+    "runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/run" }
+    }
+  },
+  "$defs": {
+    "run": {
+      "type": "object",
+      "required": ["tool", "results"],
+      "properties": {
+        "tool": {
+          "type": "object",
+          "required": ["driver"],
+          "properties": {
+            "driver": {
+              "type": "object",
+              "description": "Provenance: which tool and version produced this run.",
+              "required": ["name", "version"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "version": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "description": "One entry per scanned file. hashes[\"sha-256\"] is the cross-tool join key.",
+          "items": { "$ref": "#/$defs/artifact" }
+        },
+        "results": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/result" }
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["location", "hashes"],
+      "properties": {
+        "location": {
+          "type": "object",
+          "required": ["uri"],
+          "properties": { "uri": { "type": "string", "minLength": 1 } }
+        },
+        "hashes": {
+          "type": "object",
+          "required": ["sha-256"],
+          "properties": {
+            "sha-256": {
+              "type": "string",
+              "description": "Bare lowercase 64-char hex SHA-256 of the artifact bytes — the join key.",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": ["properties"],
+      "properties": {
+        "properties": {
+          "type": "object",
+          "required": ["layer"],
+          "properties": {
+            "layer": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Class of tool that produced the finding. Reserved: drift | content | atr. Tools MAY define more; consumers MUST treat unknown layers as opaque, not drop them.",
+              "examples": ["drift", "content", "atr"]
+            }
+          }
+        },
+        "locations": {
+          "type": "array",
+          "description": "A located finding MUST index its artifact so it resolves to a digest. Removed-target findings (no resolvable file) carry no locations and are exempt.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "physicalLocation": {
+                "type": "object",
+                "properties": {
+                  "artifactLocation": {
+                    "type": "object",
+                    "required": ["index"],
+                    "properties": {
+                      "index": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Points into run.artifacts[] so the finding binds to that artifact's sha-256."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

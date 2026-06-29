@@ -173,6 +173,9 @@ func TestRender_ResultPropertiesCarried(t *testing.T) {
 	if r.Level != "error" {
 		t.Errorf("level: %q", r.Level)
 	}
+	if r.Properties.Layer != "drift" {
+		t.Errorf("properties.layer: %q (want drift — envelope discriminator, SPEC §14.3)", r.Properties.Layer)
+	}
 	if r.Properties.Skill != "alpha" {
 		t.Errorf("properties.skill: %q", r.Properties.Skill)
 	}
