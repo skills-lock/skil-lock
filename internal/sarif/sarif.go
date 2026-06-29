@@ -321,6 +321,7 @@ func buildResults(d model.Diff, current model.Lockfile, idx map[string]int) []re
 			r.Locations = []location{*loc}
 		}
 		r.Properties = resultProperties{
+			Layer:      layerDrift,
 			Skill:      e.Skill,
 			Capability: e.Capability,
 			Change:     string(e.Change),
@@ -485,12 +486,24 @@ type result struct {
 }
 
 type resultProperties struct {
+	// Layer is the scan-report-envelope discriminator (SPEC §14.3): it
+	// tells a multi-scanner consumer which class of tool produced the
+	// finding so reports merged on one content digest stay attributable.
+	// Every SkilLock finding is a baseline-to-current capability delta, so
+	// the layer is always "drift".
+	Layer      string `json:"layer"`
 	Skill      string `json:"skill"`
 	Capability string `json:"capability"`
 	Change     string `json:"change"`
 	Severity   string `json:"severity"`
 	Note       string `json:"note,omitempty"`
 }
+
+// layerDrift is the envelope layer SkilLock emits — it is a drift scanner:
+// every result is a delta from an approved baseline. Other layers a
+// consumer may see from sibling tools are "content" (static content scan)
+// and "atr" (agentic-threat rules); see SPEC §14.3.
+const layerDrift = "drift"
 
 type location struct {
 	PhysicalLocation physicalLocation `json:"physicalLocation"`

@@ -261,6 +261,61 @@ The document also carries the [OWASP Agentic Skills Top 10 (AST10)](https://gith
 
 The SARIF output is a view of the same delta the markdown PR comment renders — both consume the same `Diff` produced from a baseline + current `skills.lock`.
 
+### 14.3 Multi-scanner report envelope (interop profile)
+
+Several independent tools scan AI skills for different things: SkilLock
+detects **capability drift** from an approved baseline; other tools run
+static **content** scans or **agentic-threat rules** (ATR). When more than
+one of these runs over the same skill, a consumer (a registry, a PR bot, a
+dashboard) should be able to merge their reports **without recomputing
+anything** and still know which tool said what.
+
+The *scan-report envelope* is a thin SARIF v2.1.0 profile that makes that
+merge deterministic. It is not specific to SkilLock — any skill scanner MAY
+emit it, and a tool that does is **envelope-conformant**. The envelope adds
+no new top-level structure; it constrains four existing SARIF fields:
+
+1. **`run.artifacts[]`** — one entry per scanned file, each with
+   `location.uri` and `hashes["sha-256"]` (bare lowercase 64-char hex). The
+   sha-256 is the **join key**: two reports describe the same artifact iff
+   their digests are equal. (This is §14.1 generalized beyond SkilLock.)
+2. **`result … physicalLocation.artifactLocation.index`** — every result
+   points into `run.artifacts[]` so each finding resolves to the digest it
+   was raised against, and a finding self-invalidates when the file changes.
+3. **`result.properties.layer`** — a required string naming the class of
+   tool that produced the finding, so merged findings stay attributable.
+   Reserved values: `drift` (capability-delta-from-baseline, what SkilLock
+   emits), `content` (static content/secret/pattern scan), `atr` (agentic
+   threat rules). Tools MAY define additional layer names; consumers MUST
+   treat an unknown layer as opaque rather than dropping the finding.
+4. **`run.tool.driver.name`** + **`version`** — standard SARIF provenance,
+   required here so a merged report can say which tool/version produced each
+   layer.
+
+A consumer merges N envelope-conformant reports by grouping `artifacts[]`
+across runs on `hashes["sha-256"]`, then attaching each run's results to
+their artifact via `artifactLocation.index` and partitioning by
+`properties.layer`. No content re-hashing or re-scanning is required.
+
+**Conformance.** A SARIF document is envelope-conformant for a given
+artifact set when, for every result: (a) it resolves to an `artifacts[]`
+entry carrying a `sha-256`, via `artifactLocation.index`; (b) it carries a
+non-empty `properties.layer`; and (c) the run names its tool and version.
+Removed-target findings (no resolvable file, hence no digest) are exempt
+from (a) and carry no `index`, matching §14.1.
+
+A reference envelope — SkilLock's own SARIF over the `drifted/` fixture,
+with the digest verified against `sha256sum` — and a JSON Schema for the
+profile live alongside this spec:
+
+- profile schema: [`schemas/scan-envelope-v0.1.json`](schemas/scan-envelope-v0.1.json)
+- reference vector + conformance notes: [`examples/drift-demo/envelope/`](examples/drift-demo/envelope/)
+
+The envelope is **descriptive, not prescriptive about detection**: it says
+nothing about *how* a tool finds an issue, only how it reports the binding
+between a finding, the exact bytes it concerns, and the layer it belongs to.
+That is the minimum needed for cross-tool findings to compose.
+
 ## 15. Spec maintenance
 
 Changes to this spec are tracked via Pull Requests on the [skil-lock repository](https://github.com/skills-lock/skil-lock). Material changes (breaking, deprecating, adding required fields) bump the `schema_version`.
