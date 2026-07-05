@@ -198,7 +198,7 @@ If you want known-bad pattern scanning before you install a skill, use Snyk or M
   }
   ```
 
-- **Interoperability - SARIF + Code Scanning**: see the [GitHub Security tab integration](#github-security-tab-integration-sarif) section above.
+- **Interoperability - SARIF + Code Scanning**: see the [GitHub Security tab integration](#github-security-tab-integration-sarif) section above. SkilLock's multi-scanner scan-report envelope (SPEC §14.3) is documented in the [OWASP Agentic Skills Top 10](https://github.com/OWASP/www-project-agentic-skills-top-10) project, so independent skill scanners can merge findings on a shared content-digest join key.
 
 ## What's in v0.1
 
