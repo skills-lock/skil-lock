@@ -34,8 +34,7 @@ skil-lock's `content_hash` matches the raw-octet value byte-for-byte — it hash
 `os.ReadFile` output directly (`internal/parser/claude/parser.go`):
 
 ```bash
-skil-lock scan invalid-utf8 --format json | \
-  jq -r '.[0].content_hash // .skills[].content_hash'
+skil-lock scan invalid-utf8 | jq -r '.skills[].content_hash'
 # sha256:0e5f6446b6c4e104a00a87655b759c4a5e5e6031b71f101a59e89156613d365b
 ```
 
