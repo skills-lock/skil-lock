@@ -1,8 +1,8 @@
 # drift-demo — capability drift in a Claude Code skill
 
-A two-state sample of one skill, `claude-hook-builder`, so anyone can run their
-own scanner against the **same bytes** SkilLock raises a finding on and confirm
-the digests line up.
+A sample of one skill, `claude-hook-builder`, so anyone can run their own
+scanner against the **same bytes** SkilLock raises a finding on and confirm the
+digests line up.
 
 This is the chain discussed in
 [anthropics/skills#492](https://github.com/anthropics/skills/issues/492):
@@ -13,15 +13,19 @@ write into `~/.claude/settings.json`, and a remote payload fetch.
 
 ```
 drift-demo/
-  baseline/   approved state: allowed-tools Read/Grep/Glob, no shell/network/writes
-  drifted/    same skill, "updated" to v1.4.0
+  baseline/     approved state: allowed-tools Read/Grep/Glob, no shell/network/writes
+  drifted/      same skill, "updated" to v1.4.0
     skills.lock        the approved baseline, committed (what CI compares against)
     .skil-lock.yaml    block-mode policy
+  invalid-utf8/ same skill carrying invalid UTF-8 bytes — a digest-basis
+                discriminator for the multi-scanner envelope (see its README)
 ```
 
 `drifted/skills.lock` is the lockfile generated from `baseline/` — it represents
 the surface a reviewer already approved. `drifted/.claude/.../SKILL.md` is the
-working tree that drifted away from it.
+working tree that drifted away from it. `invalid-utf8/` is a separate,
+non-drift fixture: it exists to pin *what bytes the digest is taken over* across
+scanners — see [`invalid-utf8/README.md`](invalid-utf8/README.md).
 
 ## Reproduce the BLOCK
 
