@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "skil-lock",
-          "version": "0.2.3",
+          "version": "dev",
           "informationUri": "https://github.com/skills-lock/skil-lock",
           "rules": [
             {
@@ -18,7 +18,7 @@
               "fullDescription": {
                 "text": "skil-lock detected an added, removed, or modified shell command in a SKILL.md fenced bash block. New shell commands are medium severity by default; protected_paths and require_approval can lift this to high."
               },
-              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#5-detectors",
+              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#61-behavior-fields",
               "properties": {
                 "tags": [
                   "security",
@@ -64,7 +64,7 @@
               "fullDescription": {
                 "text": "skil-lock detected an added, removed, or modified URL referenced by a SKILL.md. New URLs whose host is not in allowed_domains are lifted to high severity."
               },
-              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#5-detectors",
+              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#61-behavior-fields",
               "properties": {
                 "tags": [
                   "security",
@@ -110,7 +110,7 @@
               "fullDescription": {
                 "text": "skil-lock detected an added, removed, or modified file path read by a SKILL.md. Paths matching protected_paths globs are lifted to high severity."
               },
-              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#5-detectors",
+              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#61-behavior-fields",
               "properties": {
                 "tags": [
                   "security",
@@ -156,7 +156,7 @@
               "fullDescription": {
                 "text": "skil-lock detected an added, removed, or modified file path written by a SKILL.md. Paths matching protected_paths globs are lifted to high severity."
               },
-              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#5-detectors",
+              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#61-behavior-fields",
               "properties": {
                 "tags": [
                   "security",
@@ -202,7 +202,7 @@
               "fullDescription": {
                 "text": "skil-lock detected a change to a SKILL.md frontmatter allowed_tools list. Low severity by default; metadata, not capability."
               },
-              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#5-detectors",
+              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#61-behavior-fields",
               "properties": {
                 "tags": [
                   "skill-behavior",
@@ -247,7 +247,7 @@
               "fullDescription": {
                 "text": "skil-lock detected an added, removed, or modified bundled script referenced by a SKILL.md. Low severity by default; review the script content separately."
               },
-              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#5-detectors",
+              "helpUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#61-behavior-fields",
               "properties": {
                 "tags": [
                   "skill-behavior",
@@ -286,6 +286,11 @@
           ]
         }
       },
+      "invocations": [
+        {
+          "executionSuccessful": true
+        }
+      ],
       "artifacts": [
         {
           "location": {
@@ -748,7 +753,17 @@
             }
           ]
         }
-      ]
+      ],
+      "properties": {
+        "completeness": {
+          "resultsBounded": false,
+          "basis": "complete",
+          "skillsDiscovered": 1,
+          "skillsAnalysed": 1,
+          "skillsUnanalysed": 0
+        },
+        "interpretationUri": "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md#145-how-to-read-a-clean-run"
+      }
     }
   ]
 }

@@ -45,6 +45,17 @@ lint:
 run: build
 	$(BIN_PATH) $(ARGS)
 
+# The envelope reference vector is real, unedited tool output that other
+# scanner authors read as the conformance fixture, so it has to be
+# regenerated whenever the emitted document changes shape — and at every
+# release, because the document now carries version-pinned links. Run
+# with the tag being cut: make vector VERSION=0.2.5
+.PHONY: vector
+vector: build
+	$(BIN_PATH) ci examples/drift-demo/drifted --format sarif \
+		> examples/drift-demo/envelope/skil-lock.sarif.json || true
+	@echo "regenerated examples/drift-demo/envelope/skil-lock.sarif.json at version $(VERSION)"
+
 .PHONY: clean
 clean:
 	rm -rf $(BIN_DIR) coverage.out
@@ -57,5 +68,6 @@ help:
 	@echo "  test   - go test with race detector + coverage"
 	@echo "  lint   - golangci-lint run"
 	@echo "  run    - build and run; pass args via ARGS='version'"
+	@echo "  vector - regenerate the envelope reference vector; VERSION=<tag> at release"
 	@echo "  clean  - remove build artifacts"
 	@echo "  all    - lint + test + build"

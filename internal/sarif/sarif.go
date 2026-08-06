@@ -11,6 +11,7 @@ package sarif
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/skills-lock/skil-lock/internal/model"
@@ -20,10 +21,46 @@ import (
 // driver block; reviewers click it to learn what SkilLock is.
 const InformationURI = "https://github.com/skills-lock/skil-lock"
 
-// HelpURIBase is the prefix appended with each rule ID for the
-// per-rule helpUri. Anchors land readers on the spec section that
-// defines the capability and severity rules.
-const HelpURIBase = "https://github.com/skills-lock/skil-lock/blob/main/SPEC.md"
+// specFragment values are the SPEC.md anchors SkilLock emits into the
+// document. They are read off the rendered headings rather than derived
+// from the heading text, because GitHub's slug algorithm drops the
+// section numbers' periods ("### 14.5 How to read a clean run" becomes
+// "#145-how-to-read-a-clean-run"). A pointer that lands on the right
+// document with the wrong fragment is barely better than no pointer, so
+// TestSpecAnchorsResolve re-derives every anchor from SPEC.md itself and
+// fails the build if one stops resolving.
+const (
+	// fragmentBehaviorFields defines the capability fields each rule
+	// reports on.
+	fragmentBehaviorFields = "#61-behavior-fields"
+	// fragmentCleanRun is the interpretationUri target: what a run with
+	// no findings does and does not claim.
+	fragmentCleanRun = "#145-how-to-read-a-clean-run"
+)
+
+// releaseVersion matches the version strings that correspond to a real
+// git tag in this repo (the tag is the version with a "v" prefix).
+// Development builds carry "dev" or a `git describe` string like
+// "0.2.4-9-gc0ebb91", neither of which is a tag, so they fall back to
+// main rather than emitting a URL that 404s.
+var releaseVersion = regexp.MustCompile(`^\d+\.\d+\.\d+(-rc\d+)?$`)
+
+// specURI builds a link into this repo's SPEC.md pinned to the ref the
+// running binary was built from.
+//
+// Pinning is the point. A consumer reading a two-year-old report needs
+// the prose as it stood for the version that emitted it; a link to main
+// hands them today's text, which may describe bounds the emitting
+// version did not have (or omit ones it did). The same argument applies
+// to every document link in the report, so rule helpUris are pinned too,
+// not just the interpretation pointer.
+func specURI(version, fragment string) string {
+	ref := "main"
+	if releaseVersion.MatchString(version) {
+		ref = "v" + version
+	}
+	return InformationURI + "/blob/" + ref + "/SPEC.md" + fragment
+}
 
 // astTaxonomyName is the SARIF toolComponent name for the OWASP Agentic
 // Skills Top 10 (AST10) taxonomy SkilLock attaches to its findings.
@@ -99,14 +136,17 @@ func Render(d model.Diff, current model.Lockfile, version string, comp Completen
 					Name:           "skil-lock",
 					Version:        version,
 					InformationURI: InformationURI,
-					Rules:          allRules(),
+					Rules:          allRules(version),
 				},
 			},
 			Invocations: []invocation{completedInvocation(comp)},
 			Artifacts:   arts,
 			Results:     buildResults(d, current, idx),
 			Taxonomies:  []taxonomy{astTaxonomy()},
-			Properties:  &runProperties{Completeness: completenessProperties(comp)},
+			Properties: &runProperties{
+				Completeness:      completenessProperties(comp),
+				InterpretationURI: specURI(version, fragmentCleanRun),
+			},
 		}},
 	}
 	return json.MarshalIndent(doc, "", "  ")
@@ -134,7 +174,7 @@ func RenderFailure(version, reason string) ([]byte, error) {
 					Name:           "skil-lock",
 					Version:        version,
 					InformationURI: InformationURI,
-					Rules:          allRules(),
+					Rules:          allRules(version),
 				},
 			},
 			Invocations: []invocation{{
@@ -149,13 +189,16 @@ func RenderFailure(version, reason string) ([]byte, error) {
 			}},
 			Results:    []result{},
 			Taxonomies: []taxonomy{astTaxonomy()},
-			Properties: &runProperties{Completeness: &completenessProps{
-				ResultsBounded: false,
-				Basis:          basisNotAnalysed,
-				Discovered:     0,
-				Analysed:       0,
-				Unanalysed:     0,
-			}},
+			Properties: &runProperties{
+				Completeness: &completenessProps{
+					ResultsBounded: false,
+					Basis:          basisNotAnalysed,
+					Discovered:     0,
+					Analysed:       0,
+					Unanalysed:     0,
+				},
+				InterpretationURI: specURI(version, fragmentCleanRun),
+			},
 		}},
 	}
 	return json.MarshalIndent(doc, "", "  ")
@@ -319,8 +362,9 @@ func ruleDefs() []ruleDef {
 // allRules returns the static rule set, each carrying its OWASP AST10
 // relationships and ast tags so consumers can map a SkilLock rule to the
 // AST risk(s) it represents without reading the spec.
-func allRules() []rule {
+func allRules(version string) []rule {
 	defs := ruleDefs()
+	help := specURI(version, fragmentBehaviorFields)
 	out := make([]rule, 0, len(defs))
 	for _, d := range defs {
 		tags := append(append([]string{}, d.tags...), astTags(d.capability)...)
@@ -329,7 +373,7 @@ func allRules() []rule {
 			Name:             d.name,
 			ShortDescription: msg{Text: d.short},
 			FullDescription:  msg{Text: d.full},
-			HelpURI:          HelpURIBase + "#5-detectors",
+			HelpURI:          help,
 			Properties:       ruleProperties{Tags: tags},
 			Relationships:    astRelationships(d.capability),
 		})
@@ -594,9 +638,33 @@ type notificationProperties struct {
 	Reason       string `json:"reason,omitempty"`
 }
 
-// runProperties carries the run-level completeness declaration.
+// runProperties carries the run-level declarations: what this run
+// covered, and where to read what a clean result from it means.
 type runProperties struct {
 	Completeness *completenessProps `json:"completeness,omitempty"`
+	// InterpretationURI points at the prose stating how to read a run
+	// with no findings. It is a pointer, not a declaration: it quantifies
+	// nothing about coverage, so unlike a numeric field it cannot lie
+	// about coverage — which is what makes it usable for bounds that live
+	// inside the detection logic and cannot be honestly measured.
+	//
+	// Run level, not rule level, and that placement is forced. Only rules
+	// that fired appear in tool.driver.rules, so a clean run carries zero
+	// rule objects: a caveat hung off reportingDescriptor.helpUri is
+	// absent from exactly the report most likely to be read as an
+	// all-clear. Nor informationUri, which SARIF §3.19.3 defines as
+	// information about the tool and consumers render as a homepage.
+	//
+	// Emitted unconditionally, including on failure runs, for the same
+	// reason the completeness block is: a pointer that appears only when
+	// something is wrong teaches consumers to read its absence as an
+	// assurance.
+	//
+	// The key name is ppcvote's spelling from the envelope RFC thread,
+	// adopted verbatim rather than re-coined. Convergence on one name
+	// across independent emitters is worth more here than a marginally
+	// better one, and the name was offered explicitly as not-a-proposal.
+	InterpretationURI string `json:"interpretationUri,omitempty"`
 }
 
 // completeness basis values: what kind of statement this run is making

@@ -370,12 +370,53 @@ that does not mean what the key says. The membership counts above carry it
 honestly instead.
 
 **Known bound, not currently declared.** The protected-path detector discards
-any token longer than 512 bytes before considering it as a path (§5). That is
-a bound on detector *input* rather than on results or on reproduced extent:
+any token longer than 512 bytes before considering it as a path (§14.5). That
+is a bound on detector *input* rather than on results or on reproduced extent:
 the tool does not withhold a finding, it never forms one. A capability delta
 behind such a token degrades to a generic content-hash change rather than
 disappearing, so it is visible but unattributed. Neither key above can carry
-this honestly, and it is recorded here rather than misreported.
+this honestly, and it is recorded in §14.5 rather than misreported.
+
+### 14.5 How to read a clean run
+
+This section is the target of `run.properties.interpretationUri`, emitted on
+every run. It is a **pointer, not a declaration**: it states nothing about
+coverage and therefore cannot misstate it, which is what makes it usable for
+bounds that live inside the detection logic and cannot be honestly quantified.
+
+**A run with no results means: no capability delta that these detectors can
+form.** It does not mean the skill's behavior is unchanged. A passing scan is
+a lower bound on drift, not a coverage claim. The bounds, as of this version:
+
+- **Static only.** SkilLock reads committed text. It does not execute a skill,
+  observe a session, or resolve what a command does at runtime.
+- **Shell extraction is heuristic.** There is no shell parser — the detector
+  tokenises line by line and takes leading words. Commands assembled at
+  runtime, indirected through a variable, or obfuscated are not resolved. The
+  bias is toward false positives, because a reviewer can dismiss those.
+- **Long tokens are dropped before path matching.** Tokens over 512 bytes are
+  not considered as paths. A file capability behind one degrades to a generic
+  content-hash change (`SKL-OTHER`) instead of `SKL-FILE-READ`/`SKL-FILE-WRITE`
+  — the change stays visible, its attribution is lost.
+- **Only shell-family bundled scripts are read for capabilities.** `.sh`,
+  `.bash`, `.zsh` and shebanged scripts under `scripts/` are mined; `.py`,
+  `.js` and the rest are digest-tracked only, so a rewrite of a bundled Python
+  script surfaces as a `bundled_scripts` change with no capability detail.
+- **Skills that failed to parse are absent from `results` entirely.** They are
+  counted and named in the §14.4 completeness block; that block, not this one,
+  is where you check whether the run covered what it was handed.
+
+The first four are bounds *inside the analysis of one input*; the fifth is a
+bound *over inputs*. Only the fifth is reachable by a run-level declaration,
+which is why the other four are prose here rather than fields there.
+
+**This link is version-pinned.** `interpretationUri` resolves to the release
+tag of the binary that emitted the report, not to `main`. A consumer reading
+an old report needs the bounds as they stood for the version that produced it;
+a link tracking the default branch would hand them today's text about
+yesterday's scan. Development builds fall back to `main`, because their
+version string has no corresponding tag. The rule helpUris are pinned the same
+way, for the same reason.
 
 ## 15. Spec maintenance
 
