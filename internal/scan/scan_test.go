@@ -195,3 +195,39 @@ func contains(xs []string, want string) bool {
 	}
 	return false
 }
+
+func TestRepo_ParseErrorIsRepoRelative(t *testing.T) {
+	// Parse errors travel: they are serialised by `skil-lock scan --json`
+	// and carried into the SARIF completeness notifications, which get
+	// uploaded. An absolute path there leaks the CI runner's directory
+	// layout, or a developer's home directory and username.
+	root := t.TempDir()
+	mkSkill(t, root, ".claude", "broken",
+		"description: broken - no name field\n",
+		"# broken\n",
+		nil,
+	)
+
+	rep, err := Repo(root)
+	if err != nil {
+		t.Fatalf("Repo: %v", err)
+	}
+	if len(rep.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %+v", rep.Errors)
+	}
+	got := rep.Errors[0]
+	if strings.Contains(got.Error, root) {
+		t.Errorf("error message embeds the absolute repo root %q: %s", root, got.Error)
+	}
+	if filepath.IsAbs(strings.Fields(got.Error)[0]) {
+		t.Errorf("error message starts with an absolute path: %s", got.Error)
+	}
+	// The relative path must survive — scrubbing must not destroy the
+	// information a reviewer needs to find the file.
+	if !strings.Contains(got.Error, "SKILL.md") {
+		t.Errorf("error message lost the file reference: %s", got.Error)
+	}
+	if got.Path != ".claude/skills/broken/SKILL.md" {
+		t.Errorf("Path = %q", got.Path)
+	}
+}

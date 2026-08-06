@@ -316,6 +316,67 @@ nothing about *how* a tool finds an issue, only how it reports the binding
 between a finding, the exact bytes it concerns, and the layer it belongs to.
 That is the minimum needed for cross-tool findings to compose.
 
+### 14.4 Run completeness
+
+The join in §14.3 answers "do two reports concern the same bytes". It does
+not answer "did this run actually look at everything it was handed", and a
+merged view that assumes it did will read an incomplete scan as a clean one.
+A missing layer, a truncated report, or a scanner that silently skipped an
+input must not read as evidence of absence.
+
+SkilLock is a **set-valued** emitter: one run covers every skill in a repo,
+and its results do not enumerate their own inputs. A per-artifact digest
+cannot recover *membership* — a skill that failed to parse has no digest, no
+result, and no absence anywhere in the report — so coverage has to be stated
+at the run level.
+
+Every SkilLock run therefore emits `run.properties.completeness`, including
+runs where nothing was skipped:
+
+| Field | Meaning |
+|---|---|
+| `resultsBounded` | Whether the `results` array was capped. Always `false`: SkilLock emits one result per diff entry with no bound. |
+| `basis` | `complete` (every discovered skill analysed), `partial` (at least one was not), or `not-analysed` (the scan itself failed). |
+| `skillsDiscovered` | Skill directories walked. Equals `skillsAnalysed + skillsUnanalysed`. |
+| `skillsAnalysed` | Skills that parsed and contributed behavior. |
+| `skillsUnanalysed` | Skills discovered but never analysed. |
+
+Declaring the basis on clean runs too is the point: a consumer that sees no
+declaration cannot distinguish "nothing was bounded" from "something was and
+the tool did not say". Silence becomes a claim rather than an absence.
+
+Each unanalysed skill also gets its own entry in
+`run.invocations[0].toolExecutionNotifications[]` at `level: "warning"`,
+carrying `properties.path` and `properties.reason` alongside
+`skilLockKind: "skill-not-analysed"`, so a consumer can name the file rather
+than only count it. `executionSuccessful` stays `true`: the analysis
+completed, it simply covered less than it was handed, which is the state
+SARIF §3.58.6 defines `warning` for.
+
+**Failure channel.** A run that could not scan at all emits
+`executionSuccessful: false` with an `error`-level notification
+(`skilLockKind: "scan-failed"`) and `basis: "not-analysed"`, rather than
+exiting non-zero with no artifact. Exit codes are lost once a report is
+uploaded and merged; a failed run must be distinguishable from a clean one
+in the document itself. `error` is reserved for this case, since under SARIF
+§3.20.21 an error-level notification means the run failed.
+
+**Two keys SkilLock deliberately does not emit.** `appliedCap` declares a cap
+on the `results` array, and SkilLock has none — emitting it would tell a
+consumer the result set may be truncated when it is whole. `droppedCount`
+means findings withheld; an unparseable skill is an input never read, not a
+finding held back, and reporting it under that key would publish a number
+that does not mean what the key says. The membership counts above carry it
+honestly instead.
+
+**Known bound, not currently declared.** The protected-path detector discards
+any token longer than 512 bytes before considering it as a path (§5). That is
+a bound on detector *input* rather than on results or on reproduced extent:
+the tool does not withhold a finding, it never forms one. A capability delta
+behind such a token degrades to a generic content-hash change rather than
+disappearing, so it is visible but unattributed. Neither key above can carry
+this honestly, and it is recorded here rather than misreported.
+
 ## 15. Spec maintenance
 
 Changes to this spec are tracked via Pull Requests on the [skil-lock repository](https://github.com/skills-lock/skil-lock). Material changes (breaking, deprecating, adding required fields) bump the `schema_version`.

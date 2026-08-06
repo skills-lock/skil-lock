@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/skills-lock/skil-lock/internal/detector/network"
 	"github.com/skills-lock/skil-lock/internal/detector/paths"
@@ -56,9 +57,31 @@ type Report struct {
 // ScanError records one non-fatal failure: a single skill's SKILL.md
 // could not be parsed. The CLI surfaces these to the reviewer but
 // keeps going so one bad skill doesn't break the whole report.
+//
+// Both fields are repo-relative. Error in particular is scrubbed of the
+// absolute repo root (see relativizeError) because it travels: it is
+// serialised by `skil-lock scan --json` and carried into the SARIF
+// report's completeness notifications, and an uploaded artifact should
+// not embed the local checkout path — that is a CI runner's directory
+// layout, or a developer's home directory and username.
 type ScanError struct {
 	Path  string `json:"path"`
 	Error string `json:"error"`
+}
+
+// relativizeError strips the absolute repo root from a parser error
+// message so the surviving path text is repo-relative. Parsers wrap
+// their errors with the absolute SKILL.md path (useful when the error
+// is printed on the machine that produced it, leaky once the message
+// is written into a report that gets uploaded and merged).
+func relativizeError(msg, repoRootAbs string) string {
+	if repoRootAbs == "" {
+		return msg
+	}
+	// Trim the root with and without its trailing separator so both
+	// "<root>/x/SKILL.md" and a bare "<root>" mention are covered.
+	msg = strings.ReplaceAll(msg, repoRootAbs+string(filepath.Separator), "")
+	return strings.ReplaceAll(msg, repoRootAbs, ".")
 }
 
 // Repo walks repoRoot and returns the assembled report. repoRoot is
@@ -101,7 +124,7 @@ func Repo(repoRoot string) (Report, error) {
 			if perr != nil {
 				rep.Errors = append(rep.Errors, ScanError{
 					Path:  filepath.ToSlash(filepath.Join(repoRel, claude.SkillFilename)),
-					Error: perr.Error(),
+					Error: relativizeError(perr.Error(), abs),
 				})
 				continue
 			}

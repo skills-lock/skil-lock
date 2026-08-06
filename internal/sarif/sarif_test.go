@@ -27,7 +27,7 @@ func currentWith(name, path string) model.Lockfile {
 }
 
 func TestRender_EmptyDiff(t *testing.T) {
-	out, err := Render(model.Diff{}, emptyCurrent(), "0.1.1")
+	out, err := Render(model.Diff{}, emptyCurrent(), "0.1.1", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRender_LocationFromCurrentLockfile(t *testing.T) {
 		Severity:   model.SeverityMedium,
 	}}}
 	cur := currentWith("alpha", ".claude/skills/alpha/SKILL.md")
-	out, err := Render(d, cur, "0.1.1")
+	out, err := Render(d, cur, "0.1.1", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestRender_RemovedSkillEmitsNoLocation(t *testing.T) {
 		Value:      "https://gone.example",
 		Severity:   model.SeverityInfo,
 	}}}
-	out, err := Render(d, emptyCurrent(), "0.1.1")
+	out, err := Render(d, emptyCurrent(), "0.1.1", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestRender_ResultPropertiesCarried(t *testing.T) {
 		Note:       "matches protected_paths",
 	}}}
 	cur := currentWith("alpha", ".claude/skills/alpha/SKILL.md")
-	out, err := Render(d, cur, "0.1.1")
+	out, err := Render(d, cur, "0.1.1", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestRender_ModifiedShowsOldAndNew(t *testing.T) {
 		OldValue:   "wget",
 		Severity:   model.SeverityLow,
 	}}}
-	out, err := Render(d, currentWith("alpha", ".claude/skills/alpha/SKILL.md"), "0.1.1")
+	out, err := Render(d, currentWith("alpha", ".claude/skills/alpha/SKILL.md"), "0.1.1", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestRender_RoundTripJSON(t *testing.T) {
 	}}
 	cur := currentWith("alpha", ".claude/skills/alpha/SKILL.md")
 	cur.Skills["beta"] = model.LockEntry{Runtime: model.RuntimeClaude, SourcePath: ".claude/skills/beta/SKILL.md"}
-	out, err := Render(d, cur, "0.1.1")
+	out, err := Render(d, cur, "0.1.1", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestRender_RoundTripJSON(t *testing.T) {
 }
 
 func TestRender_ASTTaxonomyEmitted(t *testing.T) {
-	out, err := Render(model.Diff{}, emptyCurrent(), "0.2.2")
+	out, err := Render(model.Diff{}, emptyCurrent(), "0.2.2", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestRender_ResultsCarryASTTaxa(t *testing.T) {
 		Value:      "scripts/run.sh",
 		Severity:   model.SeverityLow,
 	}}}
-	out, err := Render(d, currentWith("alpha", ".claude/skills/alpha/SKILL.md"), "0.2.2")
+	out, err := Render(d, currentWith("alpha", ".claude/skills/alpha/SKILL.md"), "0.2.2", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestRender_TargetDigestEmitted(t *testing.T) {
 		SourcePath:  ".claude/skills/alpha/SKILL.md",
 		ContentHash: "sha256:" + digest,
 	}
-	out, err := Render(d, cur, "0.2.3")
+	out, err := Render(d, cur, "0.2.3", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestRender_NoDigestWithoutContentHash(t *testing.T) {
 		Value:      "curl",
 		Severity:   model.SeverityMedium,
 	}}}
-	out, err := Render(d, currentWith("alpha", ".claude/skills/alpha/SKILL.md"), "0.2.3")
+	out, err := Render(d, currentWith("alpha", ".claude/skills/alpha/SKILL.md"), "0.2.3", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -445,7 +445,7 @@ func TestRender_DigestDedupedPerSkill(t *testing.T) {
 		SourcePath:  ".claude/skills/alpha/SKILL.md",
 		ContentHash: "sha256:" + strings.Repeat("b", 64),
 	}
-	out, err := Render(d, cur, "0.2.3")
+	out, err := Render(d, cur, "0.2.3", Complete(1))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -478,5 +478,175 @@ func TestRender_AllRulesIncludeHelpURI(t *testing.T) {
 		if len(r.Properties.Tags) == 0 {
 			t.Errorf("rule %s missing tags", r.ID)
 		}
+	}
+}
+
+// --- completeness declaration (multi-scanner envelope RFC) ---
+
+// decodeRun unmarshals a rendered document and returns its single run as
+// a generic map, so tests assert on the emitted JSON rather than on the
+// Go structs that produced it.
+func decodeRun(t *testing.T, out []byte) map[string]any {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	runs, ok := doc["runs"].([]any)
+	if !ok || len(runs) != 1 {
+		t.Fatalf("expected exactly 1 run, got %v", doc["runs"])
+	}
+	run, ok := runs[0].(map[string]any)
+	if !ok {
+		t.Fatalf("run is not an object: %T", runs[0])
+	}
+	return run
+}
+
+func TestRender_CompleteRunDeclaresCompleteness(t *testing.T) {
+	out, err := Render(model.Diff{}, emptyCurrent(), "0.2.4", Complete(3))
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	run := decodeRun(t, out)
+
+	// A clean run still declares its basis. Omitting the declaration on
+	// the happy path is what makes silence ambiguous between "nothing
+	// was bounded" and "something was and the tool didn't say".
+	props, ok := run["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("complete run has no properties: %v", run["properties"])
+	}
+	comp, ok := props["completeness"].(map[string]any)
+	if !ok {
+		t.Fatalf("complete run has no completeness declaration: %v", props)
+	}
+	if got := comp["basis"]; got != "complete" {
+		t.Errorf("basis = %v, want complete", got)
+	}
+	if got := comp["skillsDiscovered"]; got != float64(3) {
+		t.Errorf("skillsDiscovered = %v, want 3", got)
+	}
+	if got := comp["skillsUnanalysed"]; got != float64(0) {
+		t.Errorf("skillsUnanalysed = %v, want 0", got)
+	}
+	if got := comp["resultsBounded"]; got != false {
+		t.Errorf("resultsBounded = %v, want false", got)
+	}
+	// appliedCap belongs to emitters that cap the results array.
+	// SkilLock does not, and must not imply that it might.
+	if _, present := comp["appliedCap"]; present {
+		t.Error("completeness must not declare appliedCap: SkilLock never caps results")
+	}
+	if _, present := comp["droppedCount"]; present {
+		t.Error("completeness must not declare droppedCount: no findings are withheld")
+	}
+
+	invs, ok := run["invocations"].([]any)
+	if !ok || len(invs) != 1 {
+		t.Fatalf("expected 1 invocation, got %v", run["invocations"])
+	}
+	inv := invs[0].(map[string]any)
+	if got := inv["executionSuccessful"]; got != true {
+		t.Errorf("executionSuccessful = %v, want true", got)
+	}
+	if _, present := inv["toolExecutionNotifications"]; present {
+		t.Error("a complete run must not emit notifications")
+	}
+}
+
+func TestRender_UnanalysedSkillIsVisibleInTheReport(t *testing.T) {
+	// The regression this whole declaration exists for: in warn mode a
+	// SKILL.md that fails to parse used to drop out of the scan with the
+	// error going only to stderr, producing a report byte-identical to a
+	// run where everything parsed.
+	comp := Completeness{
+		Discovered: 2,
+		Analysed:   1,
+		Unanalysed: []Unanalysed{{
+			Path:   ".claude/skills/release-notes/SKILL.md",
+			Reason: `SKILL.md frontmatter is missing a required field: "name"`,
+		}},
+	}
+	out, err := Render(model.Diff{}, emptyCurrent(), "0.2.4", comp)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	clean, err := Render(model.Diff{}, emptyCurrent(), "0.2.4", Complete(1))
+	if err != nil {
+		t.Fatalf("Render clean: %v", err)
+	}
+	if string(out) == string(clean) {
+		t.Fatal("a run that skipped a skill is byte-identical to a clean run")
+	}
+
+	run := decodeRun(t, out)
+	props := run["properties"].(map[string]any)["completeness"].(map[string]any)
+	if got := props["basis"]; got != "partial" {
+		t.Errorf("basis = %v, want partial", got)
+	}
+	if got := props["skillsUnanalysed"]; got != float64(1) {
+		t.Errorf("skillsUnanalysed = %v, want 1", got)
+	}
+
+	invs := run["invocations"].([]any)
+	inv := invs[0].(map[string]any)
+	// The analysis itself completed; it just covered less than it was
+	// handed. executionSuccessful=false is reserved for a failed scan.
+	if got := inv["executionSuccessful"]; got != true {
+		t.Errorf("executionSuccessful = %v, want true", got)
+	}
+	notes, ok := inv["toolExecutionNotifications"].([]any)
+	if !ok || len(notes) != 1 {
+		t.Fatalf("expected 1 notification, got %v", inv["toolExecutionNotifications"])
+	}
+	note := notes[0].(map[string]any)
+	if got := note["level"]; got != "warning" {
+		// error would mean the run failed (SARIF §3.20.21).
+		t.Errorf("level = %v, want warning", got)
+	}
+	np := note["properties"].(map[string]any)
+	if got := np["skilLockKind"]; got != "skill-not-analysed" {
+		t.Errorf("skilLockKind = %v", got)
+	}
+	if got := np["path"]; got != ".claude/skills/release-notes/SKILL.md" {
+		t.Errorf("path = %v", got)
+	}
+	if msg, _ := note["message"].(map[string]any); msg != nil {
+		if !strings.Contains(msg["text"].(string), "was not analysed") {
+			t.Errorf("message does not name the failure: %v", msg["text"])
+		}
+	}
+}
+
+func TestRenderFailure_IsTheFailureChannel(t *testing.T) {
+	out, err := RenderFailure("0.2.4", "read .claude/skills: permission denied")
+	if err != nil {
+		t.Fatalf("RenderFailure: %v", err)
+	}
+	run := decodeRun(t, out)
+
+	invs := run["invocations"].([]any)
+	inv := invs[0].(map[string]any)
+	if got := inv["executionSuccessful"]; got != false {
+		t.Errorf("executionSuccessful = %v, want false on a failed scan", got)
+	}
+	notes := inv["toolExecutionNotifications"].([]any)
+	note := notes[0].(map[string]any)
+	if got := note["level"]; got != "error" {
+		t.Errorf("level = %v, want error", got)
+	}
+	if got := note["properties"].(map[string]any)["skilLockKind"]; got != "scan-failed" {
+		t.Errorf("skilLockKind = %v, want scan-failed", got)
+	}
+	comp := run["properties"].(map[string]any)["completeness"].(map[string]any)
+	if got := comp["basis"]; got != "not-analysed" {
+		t.Errorf("basis = %v, want not-analysed", got)
+	}
+	// A failed run reports no findings — and must not be readable as a
+	// clean one, which is what the error notification above prevents.
+	if results, ok := run["results"].([]any); !ok || len(results) != 0 {
+		t.Errorf("results = %v, want empty", run["results"])
 	}
 }

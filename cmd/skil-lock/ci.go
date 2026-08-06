@@ -92,10 +92,33 @@ see.`,
 
 			rep, err := scan.Repo(root)
 			if err != nil {
+				// The scan itself failed, so there is nothing to compare
+				// and no report to render from a diff. In SARIF mode emit
+				// the failure channel anyway (executionSuccessful=false)
+				// rather than exiting with no artifact: a consumer that
+				// only ever sees uploaded reports would otherwise be
+				// unable to tell a failed run from a clean one.
+				if format == formatSARIF {
+					if doc, rerr := sarif.RenderFailure(version, err.Error()); rerr == nil {
+						_, _ = cmd.OutOrStdout().Write(doc)
+						_, _ = fmt.Fprintln(cmd.OutOrStdout())
+					}
+				}
 				return fmt.Errorf("scan %s: %w", root, err)
 			}
 			for _, e := range rep.Errors {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s: %s\n", e.Path, e.Error)
+			}
+			// Carry the parse failures into the report itself. Printing
+			// them to stderr is not enough: stderr is not uploaded, so a
+			// run that silently skipped a skill produced a report
+			// indistinguishable from one where everything parsed.
+			comp := sarif.Completeness{
+				Discovered: len(rep.Skills) + len(rep.Errors),
+				Analysed:   len(rep.Skills),
+			}
+			for _, e := range rep.Errors {
+				comp.Unanalysed = append(comp.Unanalysed, sarif.Unanalysed{Path: e.Path, Reason: e.Error})
 			}
 
 			current := buildLockfile(rep)
@@ -120,7 +143,7 @@ see.`,
 			verdict, blocked := decide(d, pol)
 			switch format {
 			case formatSARIF:
-				doc, err := sarif.Render(d, current, version)
+				doc, err := sarif.Render(d, current, version, comp)
 				if err != nil {
 					return fmt.Errorf("render sarif: %w", err)
 				}
