@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/skills-lock/skil-lock/internal/detector/network"
 	"github.com/skills-lock/skil-lock/internal/detector/paths"
@@ -56,9 +57,40 @@ type Report struct {
 // ScanError records one non-fatal failure: a single skill's SKILL.md
 // could not be parsed. The CLI surfaces these to the reviewer but
 // keeps going so one bad skill doesn't break the whole report.
+//
+// Both fields are repo-relative. Error in particular is scrubbed of the
+// absolute repo root (see relativizeError) because it travels: it is
+// serialised by `skil-lock scan --json` and carried into the SARIF
+// report's completeness notifications, and an uploaded artifact should
+// not embed the local checkout path — that is a CI runner's directory
+// layout, or a developer's home directory and username.
 type ScanError struct {
 	Path  string `json:"path"`
 	Error string `json:"error"`
+}
+
+// relativizeError strips the absolute repo root from a parser error
+// message so the surviving path text is repo-relative, and normalises
+// that path to forward slashes. Parsers wrap their errors with the
+// absolute SKILL.md path (useful when the error is printed on the
+// machine that produced it, leaky once the message is written into a
+// report that gets uploaded and merged).
+//
+// skillRel is the repo-relative path this error concerns, already
+// slash-normalised; rewriting exactly that token keeps a report
+// produced on Windows identical to one produced on Linux, without
+// touching backslashes elsewhere in the message.
+func relativizeError(msg, repoRootAbs, skillRel string) string {
+	if repoRootAbs != "" {
+		// Trim the root with and without its trailing separator so both
+		// "<root>/x/SKILL.md" and a bare "<root>" mention are covered.
+		msg = strings.ReplaceAll(msg, repoRootAbs+string(filepath.Separator), "")
+		msg = strings.ReplaceAll(msg, repoRootAbs, ".")
+	}
+	if skillRel != "" && filepath.Separator != '/' {
+		msg = strings.ReplaceAll(msg, filepath.FromSlash(skillRel), skillRel)
+	}
+	return msg
 }
 
 // Repo walks repoRoot and returns the assembled report. repoRoot is
@@ -99,9 +131,10 @@ func Repo(repoRoot string) (Report, error) {
 
 			parsed, perr := parseFor(skillDir, root.Runtime)
 			if perr != nil {
+				skillRel := filepath.ToSlash(filepath.Join(repoRel, claude.SkillFilename))
 				rep.Errors = append(rep.Errors, ScanError{
-					Path:  filepath.ToSlash(filepath.Join(repoRel, claude.SkillFilename)),
-					Error: perr.Error(),
+					Path:  skillRel,
+					Error: relativizeError(perr.Error(), abs, skillRel),
 				})
 				continue
 			}

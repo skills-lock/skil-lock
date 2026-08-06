@@ -41,12 +41,54 @@ const (
 	astHelpURIBase    = "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/"
 )
 
+// Unanalysed records one skill that was discovered but never analysed —
+// its SKILL.md failed to parse. Path is the repo-relative SKILL.md path;
+// Reason is the parser's message. These are the inputs the run was
+// handed and could not turn into findings.
+type Unanalysed struct {
+	Path   string
+	Reason string
+}
+
+// Completeness is a run's statement about what it actually analysed,
+// and it is a required argument to Render on purpose.
+//
+// The failure this exists to prevent: a skill whose SKILL.md fails to
+// parse drops out of the scan, and a report that says nothing about it
+// is byte-identical to a report from a run where every skill parsed
+// cleanly. The tool knew, and the knowledge never reached the artifact.
+// A consumer merging this report with others (see SPEC §14.3) then
+// reads "no drift findings" as "capability surface unchanged", which is
+// a claim this run is not entitled to make about a skill it never read.
+//
+// Making it a parameter rather than an option means a caller cannot
+// render a document that implies completeness by omission: to emit a
+// report at all you must state what you analysed, even when the answer
+// is "everything". That is the run-level completeness declaration
+// SkilLock argued for in the multi-scanner envelope RFC — silence about
+// bounds becomes a claim rather than an absence.
+type Completeness struct {
+	// Discovered is the number of skill directories the scan walked.
+	Discovered int
+	// Analysed is the number that parsed and contributed behavior.
+	Analysed int
+	// Unanalysed lists the skills that failed to parse, in scan order.
+	Unanalysed []Unanalysed
+}
+
+// Complete returns a Completeness for a run that analysed every skill it
+// discovered. Use it only when that is actually true.
+func Complete(analysed int) Completeness {
+	return Completeness{Discovered: analysed, Analysed: analysed}
+}
+
 // Render returns the SARIF v2.1.0 JSON document for diff d. The
 // current lockfile is used to resolve each skill's SKILL.md path; an
 // entry referencing a skill missing from current (a removed skill) is
 // reported without a physicalLocation. version is the running CLI
 // version string ("0.1.0", "dev", etc.) emitted in driver.version.
-func Render(d model.Diff, current model.Lockfile, version string) ([]byte, error) {
+// comp states what the run analysed; see Completeness.
+func Render(d model.Diff, current model.Lockfile, version string, comp Completeness) ([]byte, error) {
 	arts, idx := buildArtifacts(d, current)
 	doc := document{
 		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/Documents/CommitteeSpecifications/2.1.0/sarif-schema-2.1.0.json",
@@ -60,12 +102,122 @@ func Render(d model.Diff, current model.Lockfile, version string) ([]byte, error
 					Rules:          allRules(),
 				},
 			},
-			Artifacts:  arts,
-			Results:    buildResults(d, current, idx),
-			Taxonomies: []taxonomy{astTaxonomy()},
+			Invocations: []invocation{completedInvocation(comp)},
+			Artifacts:   arts,
+			Results:     buildResults(d, current, idx),
+			Taxonomies:  []taxonomy{astTaxonomy()},
+			Properties:  &runProperties{Completeness: completenessProperties(comp)},
 		}},
 	}
 	return json.MarshalIndent(doc, "", "  ")
+}
+
+// RenderFailure returns a SARIF document for a run that could not
+// analyse anything — the scan itself failed (unreadable skill root, I/O
+// error) rather than one skill failing to parse.
+//
+// This is the failure channel required by §4 of the multi-scanner
+// envelope profile: a run that did not complete MUST say so in a fixed
+// place, at level "error", rather than exiting non-zero with no
+// artifact. Without it a failed run and a clean run are distinguishable
+// only by exit code, which is lost the moment the report is uploaded
+// and merged. executionSuccessful is false here and only here: a skill
+// that failed to parse leaves executionSuccessful true, because the
+// analysis did complete — it just covered less than it was handed.
+func RenderFailure(version, reason string) ([]byte, error) {
+	doc := document{
+		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/Documents/CommitteeSpecifications/2.1.0/sarif-schema-2.1.0.json",
+		Version: "2.1.0",
+		Runs: []run{{
+			Tool: tool{
+				Driver: driver{
+					Name:           "skil-lock",
+					Version:        version,
+					InformationURI: InformationURI,
+					Rules:          allRules(),
+				},
+			},
+			Invocations: []invocation{{
+				ExecutionSuccessful: false,
+				ToolExecutionNotifications: []notification{{
+					Level:   levelError,
+					Message: msg{Text: "skil-lock could not complete the scan: " + reason},
+					Properties: &notificationProperties{
+						SkilLockKind: kindScanFailed,
+					},
+				}},
+			}},
+			Results:    []result{},
+			Taxonomies: []taxonomy{astTaxonomy()},
+			Properties: &runProperties{Completeness: &completenessProps{
+				ResultsBounded: false,
+				Basis:          basisNotAnalysed,
+				Discovered:     0,
+				Analysed:       0,
+				Unanalysed:     0,
+			}},
+		}},
+	}
+	return json.MarshalIndent(doc, "", "  ")
+}
+
+// completedInvocation builds the invocations[0] entry for a run that
+// finished. executionSuccessful stays true even when skills failed to
+// parse: the analysis ran to completion over what it could read, and
+// the results it produced are valid. Each unanalysed skill gets its own
+// warning-level notification so a consumer can name the file, not just
+// count it — SARIF §3.58.6 defines warning as "the analysis might be
+// incomplete but the results that were generated are probably valid",
+// which is exactly this state.
+func completedInvocation(comp Completeness) invocation {
+	inv := invocation{ExecutionSuccessful: true}
+	for _, u := range comp.Unanalysed {
+		// Parser errors are prefixed with the file they concern, which
+		// path already carries; drop the duplicate so the message reads
+		// as one sentence rather than naming the file twice.
+		reason := strings.TrimPrefix(u.Reason, u.Path+": ")
+		inv.ToolExecutionNotifications = append(inv.ToolExecutionNotifications, notification{
+			Level: levelWarning,
+			Message: msg{Text: fmt.Sprintf(
+				"%s was not analysed (%s); its capability surface is unknown and absent from this report",
+				u.Path, reason)},
+			Properties: &notificationProperties{
+				SkilLockKind: kindSkillNotAnalysed,
+				Path:         u.Path,
+				Reason:       reason,
+			},
+		})
+	}
+	return inv
+}
+
+// completenessProperties renders the run-level declaration. It is
+// emitted on every run, including fully complete ones, which is the
+// whole point: a consumer that sees no declaration cannot tell "nothing
+// was bounded" from "something was and the tool didn't say".
+//
+// Deliberately absent: appliedCap. In the envelope RFC that key
+// declares a cap on the results array, and SkilLock has none — one
+// result per diff entry, no bound. Declaring appliedCap here would tell
+// a consumer the result set may be truncated when it is whole.
+//
+// Also deliberately absent: droppedCount. An unparseable skill is not a
+// finding held back, it is an input never read, and reporting it under
+// a key that means "findings withheld" would publish a number that does
+// not mean what the key says. The membership counts below carry it
+// honestly instead.
+func completenessProperties(comp Completeness) *completenessProps {
+	basis := basisComplete
+	if len(comp.Unanalysed) > 0 {
+		basis = basisPartial
+	}
+	return &completenessProps{
+		ResultsBounded: false,
+		Basis:          basis,
+		Discovered:     comp.Discovered,
+		Analysed:       comp.Analysed,
+		Unanalysed:     len(comp.Unanalysed),
+	}
 }
 
 // buildArtifacts returns the run.artifacts[] array — one entry per distinct
@@ -396,10 +548,88 @@ type document struct {
 }
 
 type run struct {
-	Tool       tool       `json:"tool"`
-	Artifacts  []artifact `json:"artifacts,omitempty"`
-	Results    []result   `json:"results"`
-	Taxonomies []taxonomy `json:"taxonomies,omitempty"`
+	Tool        tool           `json:"tool"`
+	Invocations []invocation   `json:"invocations,omitempty"`
+	Artifacts   []artifact     `json:"artifacts,omitempty"`
+	Results     []result       `json:"results"`
+	Taxonomies  []taxonomy     `json:"taxonomies,omitempty"`
+	Properties  *runProperties `json:"properties,omitempty"`
+}
+
+// invocation is the SARIF run.invocations[] entry. SkilLock emits
+// exactly one: a scan is a single invocation of the tool.
+type invocation struct {
+	ExecutionSuccessful        bool           `json:"executionSuccessful"`
+	ToolExecutionNotifications []notification `json:"toolExecutionNotifications,omitempty"`
+}
+
+// notification is a toolExecutionNotifications entry — a statement
+// about the run itself rather than about the code being analysed.
+type notification struct {
+	Level      string                  `json:"level"`
+	Message    msg                     `json:"message"`
+	Properties *notificationProperties `json:"properties,omitempty"`
+}
+
+// SARIF notification levels SkilLock emits. error means the run did not
+// complete (§3.20.21); warning means the analysis may be incomplete but
+// the results produced are probably valid (§3.58.6).
+const (
+	levelError   = "error"
+	levelWarning = "warning"
+)
+
+// notification kinds, namespaced so a merged multi-scanner report can
+// tell SkilLock's notifications apart from a sibling tool's.
+const (
+	kindSkillNotAnalysed = "skill-not-analysed"
+	kindScanFailed       = "scan-failed"
+)
+
+type notificationProperties struct {
+	// SkilLockKind names what the notification is about, so a consumer
+	// can branch without parsing the message text.
+	SkilLockKind string `json:"skilLockKind"`
+	Path         string `json:"path,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+// runProperties carries the run-level completeness declaration.
+type runProperties struct {
+	Completeness *completenessProps `json:"completeness,omitempty"`
+}
+
+// completeness basis values: what kind of statement this run is making
+// about its own coverage.
+const (
+	// basisComplete: every discovered skill was analysed.
+	basisComplete = "complete"
+	// basisPartial: at least one discovered skill was not analysed;
+	// see the warning notifications for which and why.
+	basisPartial = "partial"
+	// basisNotAnalysed: the scan itself failed; nothing was analysed.
+	basisNotAnalysed = "not-analysed"
+)
+
+// completenessProps is SkilLock's run-level completeness declaration.
+//
+// SkilLock is a set-valued emitter: one run covers every skill in a
+// repo, and its results do not enumerate their own inputs. A
+// per-artifact digest cannot recover membership — a skill that failed
+// to parse has no digest, no result, and no absence anywhere in the
+// report — so the count of what was discovered versus analysed is the
+// only thing that makes the gap visible.
+type completenessProps struct {
+	// ResultsBounded reports whether the results array was capped.
+	// SkilLock never caps it (one result per diff entry), and says so
+	// explicitly rather than by omission.
+	ResultsBounded bool   `json:"resultsBounded"`
+	Basis          string `json:"basis"`
+	// Discovered, Analysed and Unanalysed are skill counts, not finding
+	// counts: Discovered = Analysed + Unanalysed.
+	Discovered int `json:"skillsDiscovered"`
+	Analysed   int `json:"skillsAnalysed"`
+	Unanalysed int `json:"skillsUnanalysed"`
 }
 
 // artifact is a SARIF run.artifacts[] entry: the scanned SKILL.md identified by
