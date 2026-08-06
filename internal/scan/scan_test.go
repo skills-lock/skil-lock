@@ -231,3 +231,24 @@ func TestRepo_ParseErrorIsRepoRelative(t *testing.T) {
 		t.Errorf("Path = %q", got.Path)
 	}
 }
+
+func TestRelativizeError_NormalisesTheSkillPath(t *testing.T) {
+	// A report produced on Windows must read identically to one produced
+	// on Linux: it is a cross-platform artifact that gets uploaded and
+	// merged with other tools' reports.
+	rel := ".claude/skills/broken/SKILL.md"
+	root := filepath.FromSlash("/repo/root")
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	got := relativizeError(abs+`: missing a required field: "name"`, root, rel)
+	want := rel + `: missing a required field: "name"`
+	if got != want {
+		t.Errorf("relativizeError:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestRelativizeError_LeavesUnrelatedTextAlone(t *testing.T) {
+	msg := `yaml: line 2: found character that cannot start any token`
+	if got := relativizeError(msg, filepath.FromSlash("/repo/root"), ".claude/skills/x/SKILL.md"); got != msg {
+		t.Errorf("relativizeError mangled an unrelated message: %q", got)
+	}
+}
