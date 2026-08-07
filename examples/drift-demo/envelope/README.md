@@ -13,9 +13,18 @@ layer that produced it.
 
 | File | What it is |
 |---|---|
-| [`skil-lock.sarif.json`](skil-lock.sarif.json) | Real, unedited output of `skil-lock ci drifted --format sarif` (v0.2.3) over the [`drifted/`](../drifted) skill. The `drift` layer of the envelope. |
+| [`skil-lock.sarif.json`](skil-lock.sarif.json) | Real, unedited output of `skil-lock ci drifted --format sarif` over the [`drifted/`](../drifted) skill. The `drift` layer of the envelope. |
 
 The profile schema is [`schemas/scan-envelope-v0.1.json`](../../../schemas/scan-envelope-v0.1.json).
+
+**Regenerating.** This file is tool output, not a hand-maintained document,
+and a fixture that silently describes an older document shape than the tool
+now emits is worse than no fixture. `make vector` rewrites it; at release
+time it is regenerated with the tag being cut (`make vector VERSION=0.2.5`),
+because the report carries version-pinned links into `SPEC.md` — see
+[§14.5](../../../SPEC.md#145-how-to-read-a-clean-run). The copy committed
+here is a development build, so `driver.version` reads `dev` and those links
+resolve to `main`; a released build pins them to its own tag.
 
 ## The join key
 

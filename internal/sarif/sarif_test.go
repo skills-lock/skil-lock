@@ -2,6 +2,8 @@ package sarif
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -294,7 +296,7 @@ func TestRender_ASTForCapability(t *testing.T) {
 }
 
 func TestRender_RulesCarryASTRelationshipsAndTags(t *testing.T) {
-	for _, r := range allRules() {
+	for _, r := range allRules("0.2.4") {
 		if len(r.Relationships) == 0 {
 			t.Errorf("rule %s has no AST relationships", r.ID)
 			continue
@@ -465,7 +467,7 @@ func TestRender_DigestDedupedPerSkill(t *testing.T) {
 }
 
 func TestRender_AllRulesIncludeHelpURI(t *testing.T) {
-	for _, r := range allRules() {
+	for _, r := range allRules("0.2.4") {
 		if r.HelpURI == "" {
 			t.Errorf("rule %s missing helpUri", r.ID)
 		}
@@ -649,4 +651,131 @@ func TestRenderFailure_IsTheFailureChannel(t *testing.T) {
 	if results, ok := run["results"].([]any); !ok || len(results) != 0 {
 		t.Errorf("results = %v, want empty", run["results"])
 	}
+}
+
+// --- interpretation pointer (envelope RFC class 3b) ---
+
+// runInterpretationURI pulls run.properties.interpretationUri, failing if
+// it is absent — absence is the defect these tests exist to catch.
+func runInterpretationURI(t *testing.T, out []byte) string {
+	t.Helper()
+	props, ok := decodeRun(t, out)["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("run.properties absent")
+	}
+	uri, ok := props["interpretationUri"].(string)
+	if !ok || uri == "" {
+		t.Fatalf("interpretationUri absent or empty: %v", props["interpretationUri"])
+	}
+	return uri
+}
+
+// TestRender_InterpretationURIOnTheEmptyRun pins the case the pointer
+// exists for. A run with zero results carries zero rule objects, so a
+// caveat attached to a rule would be missing from precisely the report a
+// consumer is most likely to read as an all-clear. Run level survives it.
+func TestRender_InterpretationURIOnTheEmptyRun(t *testing.T) {
+	out, err := Render(model.Diff{}, emptyCurrent(), "0.2.4", Complete(3))
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	uri := runInterpretationURI(t, out)
+	if !strings.HasSuffix(uri, fragmentCleanRun) {
+		t.Errorf("interpretationUri = %q, want it to end in %q", uri, fragmentCleanRun)
+	}
+	if results := decodeRun(t, out)["results"].([]any); len(results) != 0 {
+		t.Fatalf("precondition: wanted an empty run, got %d results", len(results))
+	}
+}
+
+// TestRenderFailure_CarriesInterpretationURI: a pointer that shows up
+// only on healthy runs teaches consumers to read its absence as an
+// assurance, so it is emitted unconditionally.
+func TestRenderFailure_CarriesInterpretationURI(t *testing.T) {
+	out, err := RenderFailure("0.2.4", "read .claude/skills: permission denied")
+	if err != nil {
+		t.Fatalf("RenderFailure: %v", err)
+	}
+	if uri := runInterpretationURI(t, out); !strings.HasSuffix(uri, fragmentCleanRun) {
+		t.Errorf("interpretationUri = %q, want it to end in %q", uri, fragmentCleanRun)
+	}
+}
+
+// TestSpecURI_PinnedToTheEmittingVersion: the prose has to be versioned
+// with the tool, or a consumer reading an old report gets today's bounds
+// for yesterday's scan. Only strings that correspond to a real tag are
+// pinned; anything else falls back to main rather than 404ing.
+func TestSpecURI_PinnedToTheEmittingVersion(t *testing.T) {
+	cases := []struct {
+		version string
+		wantRef string
+	}{
+		{"0.2.4", "/blob/v0.2.4/"},
+		{"1.0.0", "/blob/v1.0.0/"},
+		{"0.2.0-rc1", "/blob/v0.2.0-rc1/"},
+		// git describe on an untagged commit — not a tag, no such URL.
+		{"0.2.3-9-gc0ebb91", "/blob/main/"},
+		{"dev", "/blob/main/"},
+		{"", "/blob/main/"},
+	}
+	for _, c := range cases {
+		got := specURI(c.version, fragmentCleanRun)
+		if !strings.Contains(got, c.wantRef) {
+			t.Errorf("specURI(%q) = %q, want it to contain %q", c.version, got, c.wantRef)
+		}
+	}
+}
+
+// TestSpecAnchorsResolve re-derives every SPEC.md anchor SkilLock emits
+// from SPEC.md itself. The fragment is the whole value of the pointer and
+// the anchors are not guessable from the heading text — GitHub's slug
+// algorithm drops the section numbers' periods, so "### 14.5 How to read
+// a clean run" becomes "#145-how-to-read-a-clean-run". Computing one by
+// hand and trusting it is how a pointer ends up landing on the right
+// document at the wrong place, which is barely better than no pointer.
+func TestSpecAnchorsResolve(t *testing.T) {
+	spec, err := os.ReadFile(filepath.Join("..", "..", "SPEC.md"))
+	if err != nil {
+		t.Fatalf("read SPEC.md: %v", err)
+	}
+	anchors := map[string]bool{}
+	inFence := false
+	for _, line := range strings.Split(string(spec), "\n") {
+		// Headings inside fenced blocks are lockfile comments, not
+		// sections; they get no anchor.
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence || !strings.HasPrefix(line, "#") {
+			continue
+		}
+		anchors["#"+githubSlug(strings.TrimLeft(line, "# "))] = true
+	}
+
+	emitted := []string{
+		fragmentBehaviorFields,
+		fragmentCleanRun,
+	}
+	for _, frag := range emitted {
+		if !anchors[frag] {
+			t.Errorf("SPEC.md has no heading yielding %q — the emitted link resolves to the document but not the section", frag)
+		}
+	}
+}
+
+// githubSlug reproduces GitHub's heading-anchor algorithm: lowercase,
+// drop everything that is not alphanumeric, space, hyphen or underscore,
+// then spaces to hyphens.
+func githubSlug(heading string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(heading)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
 }

@@ -1,7 +1,12 @@
 package paths
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/skills-lock/skil-lock/internal/parser/claude"
@@ -207,3 +212,90 @@ func TestDetect_DedupesAcrossLines(t *testing.T) {
 		t.Errorf("dedupe: %v", got.Reads)
 	}
 }
+
+// TestSpecStatesTokenBound pins the token bound stated in SPEC.md prose
+// to the constant the detector actually applies.
+//
+// The pointer emitted as run.properties.interpretationUri resolves to
+// SPEC.md §14.5, and a companion test proves the anchor resolves. Nothing
+// proved the prose behind it was true. This closes the part of that gap
+// that is mechanically decidable: the enumerated bounds include one
+// constant, and a constant in prose can be held to the constant in code.
+// It declares nothing about coverage — it asserts only that two values
+// agree — so it cannot overstate what the tool checks.
+//
+// What it does not reach: whether the four bounds listed in §14.5 are all
+// of them. That residue is undeclarable by construction, and a test
+// claiming otherwise would be the coverage claim this design refuses.
+func TestSpecStatesTokenBound(t *testing.T) {
+	spec, err := os.ReadFile(filepath.Join("..", "..", "..", "SPEC.md"))
+	if err != nil {
+		t.Fatalf("read SPEC.md: %v", err)
+	}
+
+	stated := tokenBoundsStatedIn(string(spec))
+
+	// Vacuity guard. Without it, deleting the sentence — or rewording it
+	// so the extractor stops matching — turns this into a test that
+	// passes over an empty set. A constraint that holds because nothing
+	// was found is the failure this thread keeps turning up: it looks
+	// green on precisely the input it should be judging.
+	if len(stated) == 0 {
+		t.Fatal("SPEC.md states no token byte bound — §14.5 must state the bound the detector applies, " +
+			"or interpretationUri points at a section that has stopped describing the tool")
+	}
+
+	for _, got := range stated {
+		if got != MaxTokenBytes {
+			t.Errorf("SPEC.md states a %d-byte token bound, detector applies %d — "+
+				"the interpretationUri target describes a tool this is not", got, MaxTokenBytes)
+		}
+	}
+}
+
+// TestTokenBoundExtractorCatchesDivergence is the negative control for
+// the test above. A check that has only ever been observed to pass is not
+// known to be capable of failing, so the extractor is run over prose
+// stating a bound that is deliberately wrong.
+func TestTokenBoundExtractorCatchesDivergence(t *testing.T) {
+	const wrong = "Tokens over 8192 bytes are not considered as paths."
+
+	stated := tokenBoundsStatedIn(wrong)
+	if len(stated) != 1 {
+		t.Fatalf("extractor found %d bounds in the control prose, want 1 — "+
+			"it cannot catch a divergence it cannot see", len(stated))
+	}
+	if stated[0] == MaxTokenBytes {
+		t.Fatalf("control prose states %d, which matches the constant — the control proves nothing", stated[0])
+	}
+}
+
+// tokenBoundsStatedIn returns every byte figure SPEC.md states about
+// token length. Sentences are the unit rather than lines, so rewrapping
+// the prose does not silently empty the result set: a bound reworded
+// across a line break still reads as one sentence here.
+func tokenBoundsStatedIn(text string) []int {
+	collapsed := strings.Join(strings.Fields(text), " ")
+
+	var bounds []int
+	for _, sentence := range sentenceSplit.Split(collapsed, -1) {
+		if !strings.Contains(strings.ToLower(sentence), "token") {
+			continue
+		}
+		for _, m := range byteFigure.FindAllStringSubmatch(sentence, -1) {
+			n, err := strconv.Atoi(m[1])
+			if err != nil {
+				continue
+			}
+			bounds = append(bounds, n)
+		}
+	}
+	return bounds
+}
+
+// A sentence ends at a period followed by whitespace or end of text. The
+// section references (§14.5) embed a period followed by a digit, so they
+// do not split.
+var sentenceSplit = regexp.MustCompile(`\.(?:\s+|$)`)
+
+var byteFigure = regexp.MustCompile(`(\d+)[ -]bytes?\b`)
