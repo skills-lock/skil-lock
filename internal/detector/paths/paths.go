@@ -22,6 +22,17 @@ import (
 	"github.com/skills-lock/skil-lock/internal/parser/claude"
 )
 
+// MaxTokenBytes is the longest token the detector will consider as a
+// path. Anything longer is discarded before matching, so a file
+// capability behind such a token degrades to a generic content-hash
+// change rather than a typed read/write.
+//
+// This bound is stated in prose in SPEC.md §14.5, where
+// run.properties.interpretationUri points. Prose and constant are held
+// together by TestSpecStatesTokenBound — a pointer that resolves to a
+// section stating the wrong number fails more quietly than a dead link.
+const MaxTokenBytes = 512
+
 // pathLike matches things that look like relative or absolute paths or
 // shell globs. Plain words like "bash" or "name" are rejected because
 // they have no separator and no glob marker.
@@ -230,7 +241,7 @@ func splitTokens(line string) []string {
 // references — bare command names, sub-100ms expressions, integers,
 // etc. The regex is the primary gate; this is a final sanity check.
 func looksLikePath(s string) bool {
-	if s == "" || len(s) > 512 {
+	if s == "" || len(s) > MaxTokenBytes {
 		return false
 	}
 	if strings.HasPrefix(s, "-") {
