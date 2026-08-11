@@ -38,6 +38,27 @@ const (
 	fragmentCleanRun = "#145-how-to-read-a-clean-run"
 )
 
+// schemaURI is the $schema value on every document SkilLock emits.
+//
+// It is the OASIS-published errata01 OS artifact, not a git ref, and the
+// distinction is the whole reason this is a named constant with a
+// comment on it. The previous value pointed into
+// oasis-tcs/sarif-spec at branch main; that path was moved out from
+// under us on 2024-05-02 when the TC restructured the repo to seed the
+// 2.2 workplace (a560296), so every document SkilLock has ever emitted
+// carried a $schema that 404s. Nothing caught it: the only assertion on
+// the field was that it is non-empty, and the string lived in a Go
+// literal that the docs link checker does not read.
+//
+// The general rule that failure argues for: a schema reference must not
+// float. A dangling link fails loudly and the reader finds out; a
+// floating one fails quietly and an old report silently validates
+// against whatever the reference means today. For links the loud
+// failure is the 404 and the quiet one is the stale anchor, so specURI
+// pins and falls back to floating. For the schema reference the quiet
+// failure is the floating ref, so there is no fallback here at all.
+const schemaURI = "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json"
+
 // releaseVersion matches the version strings that correspond to a real
 // git tag in this repo (the tag is the version with a "v" prefix).
 // Development builds carry "dev" or a `git describe` string like
@@ -51,9 +72,13 @@ var releaseVersion = regexp.MustCompile(`^\d+\.\d+\.\d+(-rc\d+)?$`)
 // Pinning is the point. A consumer reading a two-year-old report needs
 // the prose as it stood for the version that emitted it; a link to main
 // hands them today's text, which may describe bounds the emitting
-// version did not have (or omit ones it did). The same argument applies
-// to every document link in the report, so rule helpUris are pinned too,
-// not just the interpretation pointer.
+// version did not have (or omit ones it did).
+//
+// The fallback to main is defensible here and only here: this is a
+// repo SkilLock owns, a dev build has no tag to point at, and the
+// alternative is a URL that 404s. It is not defensible for the schema
+// reference (see schemaURI) or for a repo SkilLock does not own (see
+// astPinnedRef), and TestEmittedURIsDoNotFloat holds that line.
 func specURI(version, fragment string) string {
 	ref := "main"
 	if releaseVersion.MatchString(version) {
@@ -73,9 +98,22 @@ const astTaxonomyName = "OWASP-AST10"
 
 // astInformationURI is the canonical AST10 project page; astHelpURIBase
 // is the prefix for each per-risk page (ast01.md … ast10.md).
+//
+// astPinnedRef is a commit, not a branch, because this is a repo
+// SkilLock does not own. A branch ref into someone else's tree is the
+// pointer that goes stale while it keeps resolving: the link still
+// returns 200 forever, and the prose behind it drifts away from the
+// taxa names below with nothing to report the divergence. Pinning to a
+// commit does not stop the divergence, it makes it visible — the ref in
+// the report is old and says so, instead of quietly serving today's
+// text as if it were what the emitting version mapped against.
+//
+// The AST01-AST10 names in astTaxa were read off README.md at this
+// commit. Moving the pin means re-reading them.
 const (
 	astInformationURI = "https://github.com/OWASP/www-project-agentic-skills-top-10"
-	astHelpURIBase    = "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/"
+	astPinnedRef      = "d5944f4d01a70909d4f05ac3cbb8908e2ba1d908"
+	astHelpURIBase    = astInformationURI + "/blob/" + astPinnedRef + "/"
 )
 
 // Unanalysed records one skill that was discovered but never analysed —
@@ -128,7 +166,7 @@ func Complete(analysed int) Completeness {
 func Render(d model.Diff, current model.Lockfile, version string, comp Completeness) ([]byte, error) {
 	arts, idx := buildArtifacts(d, current)
 	doc := document{
-		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/Documents/CommitteeSpecifications/2.1.0/sarif-schema-2.1.0.json",
+		Schema:  schemaURI,
 		Version: "2.1.0",
 		Runs: []run{{
 			Tool: tool{
@@ -166,7 +204,7 @@ func Render(d model.Diff, current model.Lockfile, version string, comp Completen
 // analysis did complete — it just covered less than it was handed.
 func RenderFailure(version, reason string) ([]byte, error) {
 	doc := document{
-		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/Documents/CommitteeSpecifications/2.1.0/sarif-schema-2.1.0.json",
+		Schema:  schemaURI,
 		Version: "2.1.0",
 		Runs: []run{{
 			Tool: tool{

@@ -418,6 +418,36 @@ yesterday's scan. Development builds fall back to `main`, because their
 version string has no corresponding tag. The rule helpUris are pinned the same
 way, for the same reason.
 
+### 14.6 What every URI in the document is pinned to
+
+The fallback to `main` above is narrower than the paragraph it appears in used
+to suggest, and the narrowing matters, because a URI that keeps resolving
+while its content moves reports nothing when it goes wrong. The document
+carries three classes of URI and each is pinned differently:
+
+| class | pinned to | may fall back to a branch |
+|---|---|---|
+| links into this repo (`interpretationUri`, rule `helpUri`) | the emitting binary's release tag | yes — an untagged build has no tag, and a dangling link is worse |
+| `$schema` | the OASIS-published `errata01` OS artifact | no |
+| links into repos SkilLock does not own (AST10 taxa `helpUri`) | a commit SHA | no |
+
+The asymmetry is not fastidiousness. For a link, the loud failure is the 404
+and the quiet one is the stale anchor, so pinning with a fallback to floating
+is right. For `$schema` the quiet failure *is* the floating ref: an old report
+silently validates against whatever the reference means today. So there is no
+fallback — a document that cannot name an immutable schema should not claim
+conformance against a moving one.
+
+SkilLock shipped the wrong side of that rule and did not notice. Through
+v0.2.4 the emitted `$schema` pointed into `oasis-tcs/sarif-spec` at branch
+`main`; the TC moved that path on 2024-05-02 while restructuring for 2.2, so
+the value 404'd in every release, including the reference vector in
+`examples/drift-demo/envelope/`. Nothing caught it: the only assertion on the
+field was that it is non-empty, and the value lived in a source literal that
+the docs link checker never reads. `TestEmittedURIsDoNotFloat` now walks the
+rendered document rather than the Go structs, so a field added later is
+covered without anyone remembering to add it.
+
 ## 15. Spec maintenance
 
 Changes to this spec are tracked via Pull Requests on the [skil-lock repository](https://github.com/skills-lock/skil-lock). Material changes (breaking, deprecating, adding required fields) bump the `schema_version`.

@@ -26,6 +26,13 @@ because the report carries version-pinned links into `SPEC.md` — see
 here is a development build, so `driver.version` reads `dev` and those links
 resolve to `main`; a released build pins them to its own tag.
 
+That fallback covers links into this repo and nothing else. `$schema` and the
+AST10 taxa `helpUri`s are pinned identically in every build, dev or released
+— see [§14.6](../../../SPEC.md#146-what-every-uri-in-the-document-is-pinned-to).
+Readers who diffed an older copy of this vector will find its `$schema`
+changed: the previous value pointed at a path in `oasis-tcs/sarif-spec` that
+the TC moved in 2024, so it 404'd. It now names the OASIS-published artifact.
+
 ## The join key
 
 Every result in the vector resolves — via `artifactLocation.index` — to this

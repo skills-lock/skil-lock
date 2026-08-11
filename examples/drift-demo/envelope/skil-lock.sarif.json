@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/Documents/CommitteeSpecifications/2.1.0/sarif-schema-2.1.0.json",
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
   "version": "2.1.0",
   "runs": [
     {
@@ -677,7 +677,7 @@
               "shortDescription": {
                 "text": "Malicious Skills"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast01.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast01.md"
             },
             {
               "id": "AST02",
@@ -685,7 +685,7 @@
               "shortDescription": {
                 "text": "Supply Chain Compromise"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast02.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast02.md"
             },
             {
               "id": "AST03",
@@ -693,7 +693,7 @@
               "shortDescription": {
                 "text": "Over-Privileged Skills"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast03.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast03.md"
             },
             {
               "id": "AST04",
@@ -701,7 +701,7 @@
               "shortDescription": {
                 "text": "Insecure Metadata"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast04.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast04.md"
             },
             {
               "id": "AST05",
@@ -709,7 +709,7 @@
               "shortDescription": {
                 "text": "Unsafe Deserialization"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast05.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast05.md"
             },
             {
               "id": "AST06",
@@ -717,7 +717,7 @@
               "shortDescription": {
                 "text": "Weak Isolation"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast06.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast06.md"
             },
             {
               "id": "AST07",
@@ -725,7 +725,7 @@
               "shortDescription": {
                 "text": "Update Drift"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast07.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast07.md"
             },
             {
               "id": "AST08",
@@ -733,7 +733,7 @@
               "shortDescription": {
                 "text": "Poor Scanning"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast08.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast08.md"
             },
             {
               "id": "AST09",
@@ -741,7 +741,7 @@
               "shortDescription": {
                 "text": "No Governance"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast09.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast09.md"
             },
             {
               "id": "AST10",
@@ -749,7 +749,7 @@
               "shortDescription": {
                 "text": "Cross-Platform Reuse"
               },
-              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/main/ast10.md"
+              "helpUri": "https://github.com/OWASP/www-project-agentic-skills-top-10/blob/d5944f4d01a70909d4f05ac3cbb8908e2ba1d908/ast10.md"
             }
           ]
         }
