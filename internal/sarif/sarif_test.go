@@ -2,6 +2,7 @@ package sarif
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -778,4 +779,143 @@ func githubSlug(heading string) string {
 		}
 	}
 	return b.String()
+}
+
+// collectURIs walks an arbitrary decoded JSON value and returns every
+// string that looks like an absolute URL, with the JSON path it was
+// found at. It walks the decoded document rather than the Go structs on
+// purpose: the defect this guards against was a string literal that no
+// typed accessor and no docs link checker ever read, so the test has to
+// see whatever actually reaches the artifact, including fields added
+// later that nobody remembers to add here.
+func collectURIs(v any, path string, out map[string]string) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, child := range t {
+			collectURIs(child, path+"."+k, out)
+		}
+	case []any:
+		for i, child := range t {
+			collectURIs(child, fmt.Sprintf("%s[%d]", path, i), out)
+		}
+	case string:
+		if strings.HasPrefix(t, "http://") || strings.HasPrefix(t, "https://") {
+			out[path] = t
+		}
+	}
+}
+
+// floatingRef reports whether uri resolves through a moving git ref — a
+// branch name rather than a tag or commit. These are the URLs that keep
+// returning 200 while the bytes behind them change.
+func floatingRef(uri string) bool {
+	for _, pat := range []string{"/blob/main/", "/blob/master/", "/raw/main/", "/refs/heads/"} {
+		if strings.Contains(uri, pat) {
+			return true
+		}
+	}
+	// raw.githubusercontent.com/<owner>/<repo>/<ref>/... — the ref is
+	// the fourth path segment and carries no /blob/ marker.
+	if rest, ok := strings.CutPrefix(uri, "https://raw.githubusercontent.com/"); ok {
+		seg := strings.Split(rest, "/")
+		if len(seg) > 2 && (seg[2] == "main" || seg[2] == "master") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestEmittedURIsDoNotFloat pins the asymmetry documented on schemaURI:
+// a link into a repo SkilLock owns may fall back to a branch when the
+// build has no tag, and nothing else in the document may float at all.
+//
+// This is the test that would have caught the dead $schema. The old
+// value pointed at oasis-tcs/sarif-spec on branch main; the TC moved
+// that path in 2024 and the URL has 404'd in every release since, while
+// the only assertion on the field was that it is non-empty.
+func TestEmittedURIsDoNotFloat(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		version     string
+		ownMayFloat bool
+	}{
+		{"release build", "0.2.4", false},
+		{"dev build", "dev", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := Render(model.Diff{}, emptyCurrent(), tc.version, Complete(1))
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			var doc any
+			if err := json.Unmarshal(out, &doc); err != nil {
+				t.Fatalf("output not valid JSON: %v", err)
+			}
+			uris := map[string]string{}
+			collectURIs(doc, "$", uris)
+
+			// Without this the whole test passes vacuously the day the
+			// document stops carrying URIs, or the walk breaks.
+			if len(uris) == 0 {
+				t.Fatal("collected no URIs from the document — the walk is broken or the document carries none")
+			}
+
+			var ownFloating int
+			for path, uri := range uris {
+				if !floatingRef(uri) {
+					continue
+				}
+				own := strings.HasPrefix(uri, InformationURI+"/")
+				switch {
+				case !own:
+					t.Errorf("%s = %q floats on a branch ref; only links into %s may, and only on an untagged build", path, uri, InformationURI)
+				case !tc.ownMayFloat:
+					t.Errorf("%s = %q floats on a branch ref, but this build has a release version to pin to", path, uri)
+				default:
+					ownFloating++
+				}
+			}
+
+			// The dev case's allowance is only meaningful if something
+			// actually took it; otherwise "only our links may float"
+			// would still pass with the fallback deleted.
+			if tc.ownMayFloat && ownFloating == 0 {
+				t.Error("no own-repo link fell back to a branch on an untagged build — the fallback under test is not exercised")
+			}
+		})
+	}
+}
+
+// TestSchemaURIIsPinned states the schema reference exactly, because it
+// is the one URI in the document whose job is to be immutable and the
+// one that was silently wrong. Spelling the value out means changing it
+// requires editing a test that says why.
+func TestSchemaURIIsPinned(t *testing.T) {
+	const want = "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json"
+
+	for _, version := range []string{"0.2.4", "dev"} {
+		out, err := Render(model.Diff{}, emptyCurrent(), version, Complete(1))
+		if err != nil {
+			t.Fatalf("Render(%s): %v", version, err)
+		}
+		var doc document
+		if err := json.Unmarshal(out, &doc); err != nil {
+			t.Fatalf("output not valid JSON: %v", err)
+		}
+		if doc.Schema != want {
+			t.Errorf("version %s: $schema = %q, want %q", version, doc.Schema, want)
+		}
+	}
+
+	fail, err := RenderFailure("0.2.4", "unreadable skill root")
+	if err != nil {
+		t.Fatalf("RenderFailure: %v", err)
+	}
+	var failDoc document
+	if err := json.Unmarshal(fail, &failDoc); err != nil {
+		t.Fatalf("failure output not valid JSON: %v", err)
+	}
+	if failDoc.Schema != want {
+		t.Errorf("failure document: $schema = %q, want %q", failDoc.Schema, want)
+	}
 }
