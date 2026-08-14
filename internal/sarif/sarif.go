@@ -62,29 +62,43 @@ const schemaURI = "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/sc
 // releaseVersion matches the version strings that correspond to a real
 // git tag in this repo (the tag is the version with a "v" prefix).
 // Development builds carry "dev" or a `git describe` string like
-// "0.2.4-9-gc0ebb91", neither of which is a tag, so they fall back to
-// main rather than emitting a URL that 404s.
+// "0.2.4-9-gc0ebb91", neither of which is a tag, so there is nothing
+// immutable for them to point at and specURI emits nothing.
 var releaseVersion = regexp.MustCompile(`^\d+\.\d+\.\d+(-rc\d+)?$`)
 
 // specURI builds a link into this repo's SPEC.md pinned to the ref the
-// running binary was built from.
+// running binary was built from. It returns "" when the build has no
+// tag to pin to; every caller omits the field rather than substituting
+// a branch.
 //
 // Pinning is the point. A consumer reading a two-year-old report needs
 // the prose as it stood for the version that emitted it; a link to main
 // hands them today's text, which may describe bounds the emitting
 // version did not have (or omit ones it did).
 //
-// The fallback to main is defensible here and only here: this is a
-// repo SkilLock owns, a dev build has no tag to point at, and the
-// alternative is a URL that 404s. It is not defensible for the schema
-// reference (see schemaURI) or for a repo SkilLock does not own (see
-// astPinnedRef), and TestEmittedURIsDoNotFloat holds that line.
+// This used to fall back to main on an untagged build, with a comment
+// arguing the fallback was defensible here and only here because the
+// alternative was a URL that 404s. That framing was wrong, and the
+// argument that corrected it came from @ppcvote on the envelope RFC:
+// the alternative is not a dangling link, it is no link. An absent
+// pointer says nothing. A main pointer quietly promises the reader
+// prose that matched the emitting build, and cannot keep the promise —
+// which is the failure mode this document already refuses to accept
+// for $schema (see schemaURI) and for repos SkilLock does not own (see
+// astPinnedRef). Absent beats mutable, and there was never a third
+// option worth having.
+//
+// Emitting nothing does not turn absence into a signal about the run.
+// A given binary either can pin or cannot, for every run it will ever
+// perform, so within one binary the field's presence still does not
+// vary with what the scan found — which is the property RenderFailure
+// depends on. TestEmittedURIsDoNotFloat and
+// TestUnpinnableBuildOmitsOwnRepoLinks hold both halves of this.
 func specURI(version, fragment string) string {
-	ref := "main"
-	if releaseVersion.MatchString(version) {
-		ref = "v" + version
+	if !releaseVersion.MatchString(version) {
+		return ""
 	}
-	return InformationURI + "/blob/" + ref + "/SPEC.md" + fragment
+	return InformationURI + "/blob/v" + version + "/SPEC.md" + fragment
 }
 
 // astTaxonomyName is the SARIF toolComponent name for the OWASP Agentic
@@ -693,10 +707,14 @@ type runProperties struct {
 	// all-clear. Nor informationUri, which SARIF §3.19.3 defines as
 	// information about the tool and consumers render as a homepage.
 	//
-	// Emitted unconditionally, including on failure runs, for the same
-	// reason the completeness block is: a pointer that appears only when
-	// something is wrong teaches consumers to read its absence as an
-	// assurance.
+	// Emitted on every run a given binary performs, including failure
+	// runs, for the same reason the completeness block is: a pointer
+	// that appears only when something is wrong teaches consumers to
+	// read its absence as an assurance. The invariant is per-binary,
+	// not global — an untagged build has nothing immutable to point at
+	// and so emits this on no run at all (see specURI). That keeps the
+	// property that matters: within any one binary, presence never
+	// varies with what the scan found.
 	//
 	// The key name is ppcvote's spelling from the envelope RFC thread,
 	// adopted verbatim rather than re-coined. Convergence on one name
@@ -767,7 +785,11 @@ type rule struct {
 	Name             string         `json:"name"`
 	ShortDescription msg            `json:"shortDescription"`
 	FullDescription  msg            `json:"fullDescription"`
-	HelpURI          string         `json:"helpUri"`
+	// HelpURI is omitempty because specURI yields nothing on an
+	// untagged build: a rule with no pinnable help link carries no
+	// help link. SARIF §3.49.12 makes helpUri optional, so dropping it
+	// keeps the rule object valid rather than shipping a branch ref.
+	HelpURI          string         `json:"helpUri,omitempty"`
 	Properties       ruleProperties `json:"properties"`
 	Relationships    []relationship `json:"relationships,omitempty"`
 }
