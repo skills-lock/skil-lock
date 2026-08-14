@@ -691,7 +691,7 @@ func TestRender_InterpretationURIOnTheEmptyRun(t *testing.T) {
 
 // TestRenderFailure_CarriesInterpretationURI: a pointer that shows up
 // only on healthy runs teaches consumers to read its absence as an
-// assurance, so it is emitted unconditionally.
+// assurance, so a build that can emit it emits it on every run.
 func TestRenderFailure_CarriesInterpretationURI(t *testing.T) {
 	out, err := RenderFailure("0.2.4", "read .claude/skills: permission denied")
 	if err != nil {
@@ -705,25 +705,75 @@ func TestRenderFailure_CarriesInterpretationURI(t *testing.T) {
 // TestSpecURI_PinnedToTheEmittingVersion: the prose has to be versioned
 // with the tool, or a consumer reading an old report gets today's bounds
 // for yesterday's scan. Only strings that correspond to a real tag are
-// pinned; anything else falls back to main rather than 404ing.
+// pinned; anything else yields no URL at all, because the only refs
+// available to an untagged build are mutable ones.
 func TestSpecURI_PinnedToTheEmittingVersion(t *testing.T) {
-	cases := []struct {
+	for _, c := range []struct {
 		version string
-		wantRef string
+		want    string
 	}{
-		{"0.2.4", "/blob/v0.2.4/"},
-		{"1.0.0", "/blob/v1.0.0/"},
-		{"0.2.0-rc1", "/blob/v0.2.0-rc1/"},
-		// git describe on an untagged commit — not a tag, no such URL.
-		{"0.2.3-9-gc0ebb91", "/blob/main/"},
-		{"dev", "/blob/main/"},
-		{"", "/blob/main/"},
-	}
-	for _, c := range cases {
-		got := specURI(c.version, fragmentCleanRun)
-		if !strings.Contains(got, c.wantRef) {
-			t.Errorf("specURI(%q) = %q, want it to contain %q", c.version, got, c.wantRef)
+		{"0.2.4", InformationURI + "/blob/v0.2.4/SPEC.md" + fragmentCleanRun},
+		{"1.0.0", InformationURI + "/blob/v1.0.0/SPEC.md" + fragmentCleanRun},
+		{"0.2.0-rc1", InformationURI + "/blob/v0.2.0-rc1/SPEC.md" + fragmentCleanRun},
+		// git describe on an untagged commit — not a tag, so no URL.
+		{"0.2.3-9-gc0ebb91", ""},
+		{"dev", ""},
+		{"", ""},
+	} {
+		if got := specURI(c.version, fragmentCleanRun); got != c.want {
+			t.Errorf("specURI(%q) = %q, want %q", c.version, got, c.want)
 		}
+	}
+}
+
+// TestUnpinnableBuildOmitsOwnRepoLinks is the positive half of
+// "absent beats mutable": an untagged build must drop the fields it
+// cannot pin, not point them at a branch.
+//
+// TestEmittedURIsDoNotFloat states that nothing floats, which an
+// emitter that shipped no URIs at all would also satisfy. This states
+// what the dev build actually does — omits interpretationUri and every
+// rule helpUri while still emitting the rules themselves — and its
+// release counterpart states that the same fields come back the moment
+// there is a tag to pin them to. Neither reading passes both.
+func TestUnpinnableBuildOmitsOwnRepoLinks(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		version    string
+		wantLinked bool
+	}{
+		{"untagged build omits", "0.2.3-9-gc0ebb91", false},
+		{"release build carries", "0.2.4", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := Render(model.Diff{}, emptyCurrent(), tc.version, Complete(1))
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			run := decodeRun(t, out)
+
+			props, ok := run["properties"].(map[string]any)
+			if !ok {
+				t.Fatal("run.properties absent")
+			}
+			_, gotPointer := props["interpretationUri"]
+			if gotPointer != tc.wantLinked {
+				t.Errorf("interpretationUri present = %v, want %v (value %q)",
+					gotPointer, tc.wantLinked, props["interpretationUri"])
+			}
+
+			rules, ok := run["tool"].(map[string]any)["driver"].(map[string]any)["rules"].([]any)
+			if !ok || len(rules) == 0 {
+				t.Fatal("tool.driver.rules absent or empty — the catalog must survive losing its help links")
+			}
+			for _, r := range rules {
+				rm := r.(map[string]any)
+				if _, got := rm["helpUri"]; got != tc.wantLinked {
+					t.Errorf("rule %v: helpUri present = %v, want %v",
+						rm["id"], got, tc.wantLinked)
+				}
+			}
+		})
 	}
 }
 
@@ -834,16 +884,9 @@ func floatingRef(uri string) bool {
 // that path in 2024 and the URL has 404'd in every release since, while
 // the only assertion on the field was that it is non-empty.
 func TestEmittedURIsDoNotFloat(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		version     string
-		ownMayFloat bool
-	}{
-		{"release build", "0.2.4", false},
-		{"dev build", "dev", true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			out, err := Render(model.Diff{}, emptyCurrent(), tc.version, Complete(1))
+	for _, version := range []string{"0.2.4", "0.2.3-9-gc0ebb91", "dev", ""} {
+		t.Run(version, func(t *testing.T) {
+			out, err := Render(model.Diff{}, emptyCurrent(), version, Complete(1))
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
@@ -860,27 +903,14 @@ func TestEmittedURIsDoNotFloat(t *testing.T) {
 				t.Fatal("collected no URIs from the document — the walk is broken or the document carries none")
 			}
 
-			var ownFloating int
+			// No exemption for links into SkilLock's own repo. Owning
+			// the target does not make a branch ref immutable, and the
+			// alternative to a mutable pointer is no pointer, not a
+			// dangling one — see specURI.
 			for path, uri := range uris {
-				if !floatingRef(uri) {
-					continue
+				if floatingRef(uri) {
+					t.Errorf("%s = %q resolves through a mutable ref; every URI in the document must be pinned or absent", path, uri)
 				}
-				own := strings.HasPrefix(uri, InformationURI+"/")
-				switch {
-				case !own:
-					t.Errorf("%s = %q floats on a branch ref; only links into %s may, and only on an untagged build", path, uri, InformationURI)
-				case !tc.ownMayFloat:
-					t.Errorf("%s = %q floats on a branch ref, but this build has a release version to pin to", path, uri)
-				default:
-					ownFloating++
-				}
-			}
-
-			// The dev case's allowance is only meaningful if something
-			// actually took it; otherwise "only our links may float"
-			// would still pass with the fallback deleted.
-			if tc.ownMayFloat && ownFloating == 0 {
-				t.Error("no own-repo link fell back to a branch on an untagged build — the fallback under test is not exercised")
 			}
 		})
 	}

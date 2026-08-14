@@ -420,33 +420,58 @@ way, for the same reason.
 
 ### 14.6 What every URI in the document is pinned to
 
-The fallback to `main` above is narrower than the paragraph it appears in used
-to suggest, and the narrowing matters, because a URI that keeps resolving
-while its content moves reports nothing when it goes wrong. The document
-carries three classes of URI and each is pinned differently:
+**No URI SkilLock emits resolves through a mutable ref. A URI that cannot be
+pinned is omitted rather than floated.** The document carries three classes of
+URI, pinned differently, but the rule above admits no exceptions:
 
-| class | pinned to | may fall back to a branch |
+| class | pinned to | if it cannot be pinned |
 |---|---|---|
-| links into this repo (`interpretationUri`, rule `helpUri`) | the emitting binary's release tag | yes — an untagged build has no tag, and a dangling link is worse |
-| `$schema` | the OASIS-published `errata01` OS artifact | no |
-| links into repos SkilLock does not own (AST10 taxa `helpUri`) | a commit SHA | no |
+| links into this repo (`interpretationUri`, rule `helpUri`) | the emitting binary's release tag | omitted — an untagged build emits neither field |
+| `$schema` | the OASIS-published `errata01` OS artifact | n/a — always pinnable |
+| links into repos SkilLock does not own (AST10 taxa `helpUri`) | a commit SHA | n/a — always pinnable |
 
-The asymmetry is not fastidiousness. For a link, the loud failure is the 404
-and the quiet one is the stale anchor, so pinning with a fallback to floating
-is right. For `$schema` the quiet failure *is* the floating ref: an old report
-silently validates against whatever the reference means today. So there is no
-fallback — a document that cannot name an immutable schema should not claim
-conformance against a moving one.
+A branch ref is a promise about the state of a branch, and it is a promise the
+emitter cannot keep. It fails quietly, too: the link keeps returning 200 while
+the prose behind it drifts away from the version that emitted the report, so
+nothing reports the divergence. That is the same failure `$schema` is protected
+from, and owning the repository on the other end does not change it — SkilLock
+moving its own `SPEC.md` headings breaks a `blob/main` link exactly as the
+SARIF TC's restructure broke ours.
 
-SkilLock shipped the wrong side of that rule and did not notice. Through
-v0.2.4 the emitted `$schema` pointed into `oasis-tcs/sarif-spec` at branch
-`main`; the TC moved that path on 2024-05-02 while restructuring for 2.2, so
-the value 404'd in every release, including the reference vector in
-`examples/drift-demo/envelope/`. Nothing caught it: the only assertion on the
-field was that it is non-empty, and the value lived in a source literal that
-the docs link checker never reads. `TestEmittedURIsDoNotFloat` now walks the
-rendered document rather than the Go structs, so a field added later is
-covered without anyone remembering to add it.
+**This section previously said the opposite for own-repo links, and shipped it.**
+Through v0.2.4 the table above read "may fall back to a branch: yes", on the
+argument that a dev build has no tag and a dangling link is worse than a
+floating one. The argument has a false premise, and the correction is
+[@ppcvote's on the envelope RFC](https://github.com/aliksir/claude-code-skill-security-check/issues/24):
+the alternative to a mutable pointer is not a dangling pointer, it is **no
+pointer**. An absent pointer claims nothing. A `blob/main` pointer quietly
+claims the reader is getting the prose that matched the emitting build. Absent
+beats mutable, and there was never a third option worth having.
+
+Omitting the field does not make its absence a signal about the run. A binary
+either can pin or cannot, for every run it will ever perform, so within one
+binary presence still never varies with what the scan found — which is the
+property §14.5 depends on.
+
+Two defects this rule caught, both shipped, both ours:
+
+- **`$schema` 404'd in every release through v0.2.4.** It pointed into
+  `oasis-tcs/sarif-spec` at branch `main`; the TC moved that path on 2024-05-02
+  while restructuring for 2.2. Nothing caught it — the only assertion on the
+  field was that it is non-empty, and the value lived in a source literal the
+  docs link checker never reads.
+- **The envelope reference vector in `examples/drift-demo/envelope/` carried
+  seven `blob/main` URLs** — six rule `helpUri`s and the `interpretationUri` —
+  because it was regenerated from a dev build. It is the artifact this project
+  cites as its worked example, so the exemplar was the violation. `make vector
+  VERSION=<tag>` at release time is what keeps it pinned.
+
+`TestEmittedURIsDoNotFloat` walks the rendered document rather than the Go
+structs, so a field added later is covered without anyone remembering to add
+it, and it now allows no own-repo exemption.
+`TestUnpinnableBuildOmitsOwnRepoLinks` states the other half — that an untagged
+build drops the fields and a release build carries them — because "nothing
+floats" alone is satisfied by an emitter that ships no URIs at all.
 
 ## 15. Spec maintenance
 
